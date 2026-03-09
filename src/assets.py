@@ -86,6 +86,24 @@ def build_ground_surface(tile: pygame.Surface) -> pygame.Surface:
     return surf
 
 
+def load_bullet_sprites(filepath: str) -> pygame.Surface:
+    """
+    Load imgbullets.bmp and return the surface with colorkey set.
+
+    Layout: 32x32px, 8x8 frames.
+      X axis: animation frame (0-3)  →  src_x = frame * 8
+      Y axis: bullet type    (0-3)  →  src_y = type  * 8
+
+    The surface is returned as-is; callers blit sub-rects from it each frame
+    using Bullet.sprite_rect so no pre-extraction is needed.
+    """
+    sheet    = pygame.image.load(filepath).convert()
+    colorkey = sheet.get_at((0, 0))
+    sheet.set_colorkey(colorkey)
+    print(f"[imgBullets] {sheet.get_width()}x{sheet.get_height()}")
+    return sheet
+
+
 def load_engine_sound(filepath: str | None, volume: float = 0.6) -> pygame.mixer.Sound | None:
     """Load the tank engine WAV, set volume, and return it. Returns None on failure."""
     if filepath is None:

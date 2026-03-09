@@ -9,6 +9,9 @@ import math
 import pygame
 import settings
 
+# Fire cooldown matches original C++ TIMER_SHOOT_LASER = 650 ms
+FIRE_COOLDOWN = 0.65
+
 
 class Player:
     """
@@ -19,8 +22,9 @@ class Player:
       Sprite column = direction // 2.
 
     Controls:
-      UP / DOWN   — move forward / backward along current heading
+      UP / DOWN    — move forward / backward along current heading
       LEFT / RIGHT — turn counter-clockwise / clockwise
+      SHIFT        — fire cannon
     """
 
     def __init__(self, x: float, y: float, direction: int = 0) -> None:
@@ -30,14 +34,16 @@ class Player:
         self.is_moving  = 0         # 1=forward, -1=backward, 0=stopped
         self.is_turning = 0         # 1=right (CW), -1=left (CCW), 0=stopped
 
-        self._turn_timer = 0.0      # seconds accumulated toward next turn step
+        self._turn_timer   = 0.0
+        self._fire_cooldown = 0.0   # seconds until next shot is allowed
+        self._fire_requested = False
 
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
 
     def handle_input(self, keys) -> None:
-        """Read pressed keys and update movement / turning intent."""
+        """Read pressed keys and update movement / turning / fire intent."""
         self.is_moving = (
              1 if keys[pygame.K_UP]    else
             -1 if keys[pygame.K_DOWN]  else 0
@@ -46,11 +52,31 @@ class Player:
              1 if keys[pygame.K_RIGHT] else
             -1 if keys[pygame.K_LEFT]  else 0
         )
+        self._fire_requested = bool(keys[pygame.K_LSHIFT] or keys[pygame.K_RSHIFT])
 
     def update(self, dt: float) -> None:
-        """Advance turn and position by dt seconds."""
+        """Advance turn, position, and fire cooldown by dt seconds."""
         self._update_turning(dt)
         self._update_movement(dt)
+        self._fire_cooldown = max(0.0, self._fire_cooldown - dt)
+
+    def try_fire(self) -> tuple[float, float, int] | None:
+        """
+        If the player is pressing fire and the cooldown has expired, consume
+        the shot and return (spawn_x, spawn_y, direction).  Otherwise None.
+
+        Spawn position is the center of the tank, offset by half a bullet
+        so the projectile appears centered on the barrel.
+        """
+        if not self._fire_requested or self._fire_cooldown > 0.0:
+            return None
+
+        self._fire_cooldown = FIRE_COOLDOWN
+
+        from src.bullet import BULLET_SIZE
+        spawn_x = self.x + settings.TANK_FRAME_W / 2 - BULLET_SIZE / 2
+        spawn_y = self.y + settings.TANK_FRAME_H / 2 - BULLET_SIZE / 2
+        return spawn_x, spawn_y, self.direction
 
     # ------------------------------------------------------------------
     # Derived properties (used by HUD and Game for rendering / sound)

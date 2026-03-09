@@ -14,8 +14,10 @@ from src.assets import (
     load_ground_tile,
     build_ground_surface,
     load_engine_sound,
+    load_bullet_sprites,
 )
 from src.player import Player
+from src.bullet import Bullet, BULLET_SIZE
 from src.hud    import HUD
 
 
@@ -62,10 +64,17 @@ class Game:
         else:
             print("WARNING: engine.wav not found — tank sounds disabled")
 
+        bullets_path = find_asset("imgbullets.bmp")
+        if not bullets_path:
+            sys.exit("ERROR: imgbullets.bmp not found — place it in assets/images/.")
+        print(f"Loading bullets: {bullets_path}")
+        self._bullet_sheet = load_bullet_sprites(bullets_path)
+
     def _create_player(self) -> None:
         start_x = float(settings.FIELD_X + settings.FIELD_WIDTH  // 2 - settings.TANK_FRAME_W // 2)
         start_y = float(settings.FIELD_Y + settings.FIELD_HEIGHT - settings.TANK_FRAME_H * 2)
-        self._player = Player(start_x, start_y, direction=0)
+        self._player  = Player(start_x, start_y, direction=0)
+        self._bullets: list[Bullet] = []
 
     def _create_hud(self) -> None:
         font = pygame.font.SysFont("consolas", 16)
@@ -103,6 +112,19 @@ class Game:
         self._player.handle_input(keys)
         self._player.update(dt)
         self._update_engine_sound()
+        self._update_bullets(dt)
+
+    def _update_bullets(self, dt: float) -> None:
+        """Spawn a new bullet if the player fired, then update all active bullets."""
+        shot = self._player.try_fire()
+        if shot is not None:
+            self._bullets.append(Bullet(*shot))
+
+        for bullet in self._bullets:
+            bullet.update(dt)
+
+        # Remove inactive bullets
+        self._bullets = [b for b in self._bullets if b.active]
 
     def _update_engine_sound(self) -> None:
         """Loop engine sound while moving; stop it when the tank is idle."""
@@ -124,8 +146,16 @@ class Game:
         tank_img = self._tank_frames[self._player.sprite_col]
         self._screen.blit(tank_img, (int(self._player.x), int(self._player.y)))
 
+        self._draw_bullets()
+
         self._hud.draw(self._screen, self._player)
         pygame.display.flip()
+
+    def _draw_bullets(self) -> None:
+        for bullet in self._bullets:
+            src_x, src_y, w, h = bullet.sprite_rect
+            src_rect = pygame.Rect(src_x, src_y, w, h)
+            self._screen.blit(self._bullet_sheet, (int(bullet.x), int(bullet.y)), src_rect)
 
     def _quit(self) -> None:
         pygame.quit()
