@@ -151,10 +151,15 @@ def load_tile_sheet(filepath: str) -> pygame.Surface:
     return sheet
 
 
-def load_engine_sound(filepath: str | None, volume: float = 0.6) -> pygame.mixer.Sound | None:
-    """Load the tank engine WAV, set volume, and return it. Returns None on failure."""
+def load_sound(filepath: str | None, volume: float = 1.0) -> pygame.mixer.Sound | None:
+    """Load a WAV file, set volume, and return it. Returns None if path is None."""
     if filepath is None:
         return None
     sound = pygame.mixer.Sound(filepath)
     sound.set_volume(volume)
     return sound
+
+
+def load_engine_sound(filepath: str | None, volume: float = 0.6) -> pygame.mixer.Sound | None:
+    """Load the tank engine WAV, set volume, and return it. Returns None on failure."""
+    return load_sound(filepath, volume)
