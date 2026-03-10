@@ -28,6 +28,7 @@ from src.explosion import Explosion
 from src.hud       import HUD
 from src.map       import GameMap
 from src.building  import BuildingManager
+from src.minimap   import Minimap
 
 
 class Game:
@@ -88,6 +89,7 @@ class Game:
     def _create_map(self) -> None:
         self._game_map  = GameMap(self._map_data, self._rock_sheet, self._lava_sheet)
         self._buildings = BuildingManager(self._map_data)
+        self._minimap   = Minimap(self._map_data, self._buildings)
 
     def _create_player(self) -> None:
         start_x, start_y = self._buildings.random_spawn()
@@ -133,8 +135,11 @@ class Game:
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
-            if event.type == pygame.KEYDOWN and event.key == pygame.K_ESCAPE:
-                return False
+            if event.type == pygame.KEYDOWN:
+                if event.key == pygame.K_ESCAPE:
+                    return False
+                if event.key == pygame.K_m:
+                    self._minimap.toggle()
         return True
 
     def _update(self, dt: float) -> None:
@@ -211,6 +216,7 @@ class Game:
         # --- unclipped ---
         self._buildings.draw_labels(self._screen, cam_x, cam_y, field_rect, self._font)
         self._hud.draw(self._screen, self._player)
+        self._minimap.draw(self._screen, self._player)
         pygame.display.flip()
 
     def _draw_ground(self, cam_x: float, cam_y: float) -> None:
