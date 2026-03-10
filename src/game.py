@@ -19,13 +19,15 @@ from src.assets import (
     load_bullet_sprites,
     load_map_data,
     load_tile_sheet,
+    _load_colorkeyed_sheet,
 )
-from src.camera   import Camera
-from src.player   import Player
-from src.bullet   import Bullet
-from src.hud      import HUD
-from src.map      import GameMap
-from src.building import BuildingManager
+from src.camera    import Camera
+from src.player    import Player
+from src.bullet    import Bullet
+from src.explosion import Explosion
+from src.hud       import HUD
+from src.map       import GameMap
+from src.building  import BuildingManager
 
 
 class Game:
@@ -74,6 +76,14 @@ class Game:
             optional_asset("laser.wav", "WARNING: laser.wav not found — shoot sound disabled"),
             volume=0.7,
         )
+        self._explode_sound  = load_sound(
+            optional_asset("explode.wav", "WARNING: explode.wav not found — explosion sound disabled"),
+            volume=0.8,
+        )
+
+        explosion_path = require_asset("imgSExplosion.bmp")
+        self._explosion_sheet = _load_colorkeyed_sheet(explosion_path)
+        print(f"[imgSExplosion] {self._explosion_sheet.get_width()}x{self._explosion_sheet.get_height()}")
 
     def _create_map(self) -> None:
         self._game_map  = GameMap(self._map_data, self._rock_sheet, self._lava_sheet)
@@ -81,8 +91,9 @@ class Game:
 
     def _create_player(self) -> None:
         start_x, start_y = self._buildings.random_spawn()
-        self._player  = Player(start_x, start_y, direction=0)
-        self._bullets: list[Bullet] = []
+        self._player     = Player(start_x, start_y, direction=0)
+        self._bullets:    list[Bullet]    = []
+        self._explosions: list[Explosion] = []
 
     def _create_hud(self) -> None:
         self._font = pygame.font.SysFont("consolas", 14)
@@ -143,8 +154,24 @@ class Game:
 
         for bullet in self._bullets:
             bullet.update(dt)
+            if bullet.active and bullet.hits_terrain(self._tile_check):
+                bullet.active = False
+                self._spawn_explosion(bullet.x, bullet.y)
 
         self._bullets = [b for b in self._bullets if b.active]
+
+        for explosion in self._explosions:
+            explosion.update(dt)
+        self._explosions = [e for e in self._explosions if e.active]
+
+    def _spawn_explosion(self, bullet_x: float, bullet_y: float) -> None:
+        """Create an explosion centred on the bullet's position and play the sound."""
+        from src.bullet import BULLET_SIZE
+        cx = bullet_x + BULLET_SIZE / 2
+        cy = bullet_y + BULLET_SIZE / 2
+        self._explosions.append(Explosion(cx, cy))
+        if self._explode_sound:
+            self._explode_sound.play()
 
     def _update_engine_sound(self) -> None:
         if not self._engine_sound:
@@ -178,6 +205,7 @@ class Game:
         self._buildings.draw_sprites(self._screen, cam_x, cam_y, field_rect, self._building_sheet)
         self._draw_player()
         self._draw_bullets()
+        self._draw_explosions()
         self._screen.set_clip(None)
 
         # --- unclipped ---
@@ -202,6 +230,13 @@ class Game:
             src_x, src_y, w, h = bullet.sprite_rect
             sx, sy = self._camera.to_screen(bullet.x, bullet.y)
             self._screen.blit(self._bullet_sheet, (sx, sy),
+                              pygame.Rect(src_x, src_y, w, h))
+
+    def _draw_explosions(self) -> None:
+        for explosion in self._explosions:
+            src_x, src_y, w, h = explosion.sprite_rect
+            sx, sy = self._camera.to_screen(explosion.x, explosion.y)
+            self._screen.blit(self._explosion_sheet, (sx, sy),
                               pygame.Rect(src_x, src_y, w, h))
 
     def _quit(self) -> None:

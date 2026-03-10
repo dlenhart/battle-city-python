@@ -3,7 +3,7 @@
 import math
 import pytest
 import settings
-from src.bullet import Bullet, BULLET_SIZE, BULLET_SPEED, ANIM_INTERVAL, NUM_ANIM_FRAMES
+from src.bullet import Bullet, BULLET_SIZE, BULLET_SPEED, ANIM_INTERVAL, NUM_ANIM_FRAMES, BULLET_MAX_RANGE
 
 
 def make_bullet(x=500.0, y=500.0, direction=0, bullet_type=0):
@@ -158,6 +158,22 @@ class TestBulletBounds:
         b = make_bullet(x=-100.0, y=-100.0)
         b.update(0.0)
         assert b.active is False
+
+    def test_deactivates_at_max_range(self):
+        b = make_bullet(direction=0)
+        dt = BULLET_MAX_RANGE / BULLET_SPEED   # exactly one max-range worth of time
+        b._move(dt)
+        assert b.active is False
+
+    def test_still_active_just_before_max_range(self):
+        b = make_bullet(direction=0)
+        dt = (BULLET_MAX_RANGE - 1) / BULLET_SPEED
+        b._move(dt)
+        assert b.active is True
+
+    def test_max_range_is_two_field_widths(self):
+        import settings
+        assert BULLET_MAX_RANGE == settings.FIELD_WIDTH * 2
 
 
 # ------------------------------------------------------------------

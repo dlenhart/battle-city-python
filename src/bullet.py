@@ -18,6 +18,7 @@ BULLET_SIZE     = 8       # sprite width and height in pixels
 BULLET_SPEED    = 300.0   # pixels per second (≈ 2× tank speed, matches C++ ratio)
 ANIM_INTERVAL   = 0.08    # seconds between animation frames
 NUM_ANIM_FRAMES = 4
+BULLET_MAX_RANGE = settings.FIELD_WIDTH * 2  # dissolves after 2× the viewport width
 
 
 class Bullet:
@@ -38,12 +39,25 @@ class Bullet:
 
         self._animation  = 0
         self._anim_timer = 0.0
+        self._distance   = 0.0   # total pixels traveled
 
     def update(self, dt: float) -> None:
         """Move and animate the bullet. Sets active=False when out of bounds."""
         self._move(dt)
         self._animate(dt)
         self._check_bounds()
+
+    def hits_terrain(self, get_tile) -> bool:
+        """Return True if the bullet's centre lies on a rock or blocked-building tile.
+
+        Lava is intentionally excluded — bullets pass through lava (matching C++).
+        get_tile: callable(tile_x, tile_y) -> int, same composite check used by the player.
+        """
+        ts = settings.TILE_SIZE
+        cx = int(self.x + BULLET_SIZE / 2)
+        cy = int(self.y + BULLET_SIZE / 2)
+        tile = get_tile(cx // ts, cy // ts)
+        return tile == settings.MAP_TILE_ROCK
 
     @property
     def sprite_rect(self) -> tuple[int, int, int, int]:
@@ -60,9 +74,13 @@ class Bullet:
     # ------------------------------------------------------------------
 
     def _move(self, dt: float) -> None:
-        angle     = self.direction * (2 * math.pi / settings.NUM_DIRECTIONS)
-        self.x   += math.sin(angle) * BULLET_SPEED * dt
-        self.y   -= math.cos(angle) * BULLET_SPEED * dt
+        angle              = self.direction * (2 * math.pi / settings.NUM_DIRECTIONS)
+        step               = BULLET_SPEED * dt
+        self.x            += math.sin(angle) * step
+        self.y            -= math.cos(angle) * step
+        self._distance    += step
+        if self._distance >= BULLET_MAX_RANGE:
+            self.active = False
 
     def _animate(self, dt: float) -> None:
         self._anim_timer += dt
