@@ -14,6 +14,7 @@ def find_asset(filename: str) -> str | None:
     """Return the absolute path to an asset file, or None if not found."""
     search_paths = [
         os.path.join(_PROJECT_ROOT, filename),
+        os.path.join(_PROJECT_ROOT, "assets", filename),
         os.path.join(_PROJECT_ROOT, "assets", "images", filename),
         os.path.join(_PROJECT_ROOT, "assets", "sfx", filename),
         os.path.join(_PROJECT_ROOT, "data", filename),
@@ -101,6 +102,52 @@ def load_bullet_sprites(filepath: str) -> pygame.Surface:
     colorkey = sheet.get_at((0, 0))
     sheet.set_colorkey(colorkey)
     print(f"[imgBullets] {sheet.get_width()}x{sheet.get_height()}")
+    return sheet
+
+
+def load_map_data(filepath: str) -> list[list[int]]:
+    """
+    Load map.dat binary file into a 512×512 list indexed as data[x][y].
+
+    File layout: row-major in C order (map[x][0..511] then map[x+1][0..511]).
+    Tile types: 0=empty, 1=rock, 2=lava, 3=city.
+    """
+    size = settings.MAP_SIZE
+    with open(filepath, "rb") as f:
+        raw = f.read()
+    data = [[raw[x * size + y] for y in range(size)] for x in range(size)]
+    print(f"[map.dat] Loaded {size}×{size} world map ({len(raw)} bytes)")
+    return data
+
+
+_MAGENTA = (255, 0, 255)
+
+def load_tile_sheet(filepath: str) -> pygame.Surface:
+    """
+    Load a terrain tile spritesheet (imgRocks.bmp or imgLava.bmp).
+
+    Layout: 768×48 px — 16 frames of 48 px wide, each a connectivity variant.
+
+    Colorkey handling:
+      imgLava.bmp  — uses magenta (255,0,255) as transparency; set it explicitly.
+      imgRocks.bmp — fully opaque; no colorkey needed.
+    Sampling pixel (0,0) is wrong for lava because that pixel is blue texture.
+    Instead we scan a small sample; if any magenta pixel exists, use magenta.
+    """
+    raw   = pygame.image.load(filepath)
+    sheet = raw.convert()
+
+    w, h = sheet.get_width(), sheet.get_height()
+    has_magenta = any(
+        sheet.get_at((x, y))[:3] == _MAGENTA
+        for x in range(0, w, 8)
+        for y in range(0, h, 8)
+    )
+    if has_magenta:
+        sheet.set_colorkey(_MAGENTA)
+        print(f"[tile sheet] {w}x{h}, colorkey=magenta — {filepath}")
+    else:
+        print(f"[tile sheet] {w}x{h}, no colorkey — {filepath}")
     return sheet
 
 

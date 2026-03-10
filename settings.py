@@ -29,10 +29,22 @@ GRAY        = (80,  80,  80)
 GREEN_LIGHT = (80,  170, 80)
 HUD_BORDER  = (60,  70,  60)
 
-# Playing field geometry
+# Playing field geometry (viewport window on screen)
 FIELD_COLS   = 13
 FIELD_ROWS   = 10
 FIELD_WIDTH  = FIELD_COLS * TANK_FRAME_W
 FIELD_HEIGHT = FIELD_ROWS * TANK_FRAME_H
 FIELD_X      = (SCREEN_WIDTH  - FIELD_WIDTH)  // 2
 FIELD_Y      = (SCREEN_HEIGHT - FIELD_HEIGHT) // 2
+
+# World map (512×512 tiles of 48×48 px each)
+MAP_SIZE       = 512           # tiles per axis
+TILE_SIZE      = TANK_FRAME_W  # 48 px — same as tank sprite size
+MAP_PIXEL_SIZE = MAP_SIZE * TILE_SIZE  # 24576 px
+
+# Tile type IDs (matching original CConstants.h)
+# MAP_SQUARE_LAVA = 1, MAP_SQUARE_ROCK = 2  (note: NOT the intuitive order)
+MAP_TILE_EMPTY = 0
+MAP_TILE_LAVA  = 1
+MAP_TILE_ROCK  = 2
+MAP_TILE_CITY  = 3

@@ -2,6 +2,9 @@
 src/game.py — Main game orchestration.
 
 Owns the pygame window, clock, asset references, and the main loop.
+The player and bullets operate in world coordinates (0 to MAP_PIXEL_SIZE).
+A camera follows the player and maps world coords to screen coords within
+the field viewport.
 """
 
 import sys
@@ -12,13 +15,15 @@ from src.assets import (
     find_asset,
     load_tank_sprites,
     load_ground_tile,
-    build_ground_surface,
     load_engine_sound,
     load_bullet_sprites,
+    load_map_data,
+    load_tile_sheet,
 )
 from src.player import Player
 from src.bullet import Bullet, BULLET_SIZE
 from src.hud    import HUD
+from src.map    import GameMap
 
 
 class Game:
@@ -27,6 +32,7 @@ class Game:
     def __init__(self) -> None:
         self._init_pygame()
         self._load_assets()
+        self._create_map()
         self._create_player()
         self._create_hud()
 
@@ -44,18 +50,27 @@ class Game:
     def _load_assets(self) -> None:
         tanks_path  = find_asset("imgTanks.bmp")
         ground_path = find_asset("imgGround.bmp")
+        rocks_path  = find_asset("imgRocks.bmp")
+        lava_path   = find_asset("imgLava.bmp")
+        map_path    = find_asset("map.dat")
         engine_path = find_asset("engine.wav")
 
-        if not tanks_path:
-            sys.exit("ERROR: imgTanks.bmp not found — place it in the project root.")
-        if not ground_path:
-            sys.exit("ERROR: imgGround.bmp not found — place it in the project root.")
+        for name, path in [
+            ("imgTanks.bmp", tanks_path),
+            ("imgGround.bmp", ground_path),
+            ("imgRocks.bmp", rocks_path),
+            ("imgLava.bmp", lava_path),
+            ("map.dat", map_path),
+        ]:
+            if not path:
+                sys.exit(f"ERROR: {name} not found.")
+            print(f"Loading {name}: {path}")
 
-        print(f"Loading tanks:  {tanks_path}")
-        print(f"Loading ground: {ground_path}")
-
-        self._tank_frames    = load_tank_sprites(tanks_path, tank_row=0)
-        self._ground_surface = build_ground_surface(load_ground_tile(ground_path))
+        self._tank_frames  = load_tank_sprites(tanks_path, tank_row=0)
+        self._ground_tile  = load_ground_tile(ground_path)
+        self._rock_sheet   = load_tile_sheet(rocks_path)
+        self._lava_sheet   = load_tile_sheet(lava_path)
+        self._map_data     = load_map_data(map_path)
 
         self._engine_sound   = load_engine_sound(engine_path)
         self._engine_channel = None
@@ -66,13 +81,17 @@ class Game:
 
         bullets_path = find_asset("imgbullets.bmp")
         if not bullets_path:
-            sys.exit("ERROR: imgbullets.bmp not found — place it in assets/images/.")
+            sys.exit("ERROR: imgbullets.bmp not found.")
         print(f"Loading bullets: {bullets_path}")
         self._bullet_sheet = load_bullet_sprites(bullets_path)
 
+    def _create_map(self) -> None:
+        self._game_map = GameMap(self._map_data, self._rock_sheet, self._lava_sheet)
+
     def _create_player(self) -> None:
-        start_x = float(settings.FIELD_X + settings.FIELD_WIDTH  // 2 - settings.TANK_FRAME_W // 2)
-        start_y = float(settings.FIELD_Y + settings.FIELD_HEIGHT - settings.TANK_FRAME_H * 2)
+        # Start near the center of the 512×512 world map
+        start_x = float(settings.MAP_SIZE // 2 * settings.TILE_SIZE)
+        start_y = float(settings.MAP_SIZE // 2 * settings.TILE_SIZE)
         self._player  = Player(start_x, start_y, direction=0)
         self._bullets: list[Bullet] = []
 
@@ -99,7 +118,6 @@ class Game:
     # ------------------------------------------------------------------
 
     def _handle_events(self) -> bool:
-        """Process the event queue. Returns False when the game should quit."""
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 return False
@@ -110,12 +128,11 @@ class Game:
     def _update(self, dt: float) -> None:
         keys = pygame.key.get_pressed()
         self._player.handle_input(keys)
-        self._player.update(dt)
+        self._player.update(dt, get_tile=self._game_map.get_tile)
         self._update_engine_sound()
         self._update_bullets(dt)
 
     def _update_bullets(self, dt: float) -> None:
-        """Spawn a new bullet if the player fired, then update all active bullets."""
         shot = self._player.try_fire()
         if shot is not None:
             self._bullets.append(Bullet(*shot))
@@ -123,11 +140,9 @@ class Game:
         for bullet in self._bullets:
             bullet.update(dt)
 
-        # Remove inactive bullets
         self._bullets = [b for b in self._bullets if b.active]
 
     def _update_engine_sound(self) -> None:
-        """Loop engine sound while moving; stop it when the tank is idle."""
         if not self._engine_sound:
             return
 
@@ -139,23 +154,73 @@ class Game:
                 self._engine_channel.stop()
                 self._engine_channel = None
 
+    # ------------------------------------------------------------------
+    # Camera
+    # ------------------------------------------------------------------
+
+    def _compute_camera(self) -> tuple[float, float]:
+        """
+        Return (cam_x, cam_y): world-pixel offset of the viewport top-left,
+        clamped so the camera never shows outside the map.
+        """
+        cam_x = self._player.x - settings.FIELD_WIDTH  / 2 + settings.TANK_FRAME_W / 2
+        cam_y = self._player.y - settings.FIELD_HEIGHT / 2 + settings.TANK_FRAME_H / 2
+        max_cam = float(settings.MAP_PIXEL_SIZE)
+        cam_x = max(0.0, min(cam_x, max_cam - settings.FIELD_WIDTH))
+        cam_y = max(0.0, min(cam_y, max_cam - settings.FIELD_HEIGHT))
+        return cam_x, cam_y
+
+    # ------------------------------------------------------------------
+    # Drawing
+    # ------------------------------------------------------------------
+
     def _draw(self) -> None:
+        cam_x, cam_y = self._compute_camera()
+        field_rect = pygame.Rect(
+            settings.FIELD_X, settings.FIELD_Y,
+            settings.FIELD_WIDTH, settings.FIELD_HEIGHT,
+        )
+
         self._screen.fill(settings.DARK_BG)
-        self._screen.blit(self._ground_surface, (settings.FIELD_X, settings.FIELD_Y))
 
-        tank_img = self._tank_frames[self._player.sprite_col]
-        self._screen.blit(tank_img, (int(self._player.x), int(self._player.y)))
+        # Clip all terrain + entity drawing to the field viewport
+        self._screen.set_clip(field_rect)
 
-        self._draw_bullets()
+        self._draw_ground(cam_x, cam_y)
+        self._game_map.draw(self._screen, cam_x, cam_y, field_rect)
+        self._draw_player(cam_x, cam_y)
+        self._draw_bullets(cam_x, cam_y)
+
+        self._screen.set_clip(None)
 
         self._hud.draw(self._screen, self._player)
         pygame.display.flip()
 
-    def _draw_bullets(self) -> None:
+    def _draw_ground(self, cam_x: float, cam_y: float) -> None:
+        """Tile the ground texture across the field, scrolling with the camera."""
+        tw, th = self._ground_tile.get_width(), self._ground_tile.get_height()
+        off_x  = int(cam_x) % tw
+        off_y  = int(cam_y) % th
+        y = settings.FIELD_Y - off_y
+        while y < settings.FIELD_Y + settings.FIELD_HEIGHT:
+            x = settings.FIELD_X - off_x
+            while x < settings.FIELD_X + settings.FIELD_WIDTH:
+                self._screen.blit(self._ground_tile, (x, y))
+                x += tw
+            y += th
+
+    def _draw_player(self, cam_x: float, cam_y: float) -> None:
+        screen_x = settings.FIELD_X + int(self._player.x - cam_x)
+        screen_y = settings.FIELD_Y + int(self._player.y - cam_y)
+        self._screen.blit(self._tank_frames[self._player.sprite_col], (screen_x, screen_y))
+
+    def _draw_bullets(self, cam_x: float, cam_y: float) -> None:
         for bullet in self._bullets:
             src_x, src_y, w, h = bullet.sprite_rect
             src_rect = pygame.Rect(src_x, src_y, w, h)
-            self._screen.blit(self._bullet_sheet, (int(bullet.x), int(bullet.y)), src_rect)
+            screen_x = settings.FIELD_X + int(bullet.x - cam_x)
+            screen_y = settings.FIELD_Y + int(bullet.y - cam_y)
+            self._screen.blit(self._bullet_sheet, (screen_x, screen_y), src_rect)
 
     def _quit(self) -> None:
         pygame.quit()

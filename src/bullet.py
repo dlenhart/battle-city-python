@@ -71,10 +71,11 @@ class Bullet:
             self._animation   = (self._animation + 1) % NUM_ANIM_FRAMES
 
     def _check_bounds(self) -> None:
+        limit = float(settings.MAP_PIXEL_SIZE)
         if (
-            self.x + BULLET_SIZE < settings.FIELD_X
-            or self.x > settings.FIELD_X + settings.FIELD_WIDTH
-            or self.y + BULLET_SIZE < settings.FIELD_Y
-            or self.y > settings.FIELD_Y + settings.FIELD_HEIGHT
+            self.x + BULLET_SIZE < 0
+            or self.x > limit
+            or self.y + BULLET_SIZE < 0
+            or self.y > limit
         ):
             self.active = False
