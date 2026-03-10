@@ -121,13 +121,7 @@ class BuildingManager:
         sheet:      pygame.Surface,
     ) -> None:
         """Draw building sprites (call inside screen clip rect)."""
-        for b in self._buildings:
-            sx = field_rect.x + b.world_x - int(cam_x)
-            sy = field_rect.y + b.world_y - int(cam_y)
-            if sx + _BSIZE <= field_rect.x or sx >= field_rect.right:
-                continue
-            if sy + _BSIZE <= field_rect.y or sy >= field_rect.bottom:
-                continue
+        for b, sx, sy in self._visible_buildings(cam_x, cam_y, field_rect):
             screen.blit(sheet, (sx, sy), b.sprite_src)
 
     def draw_labels(
@@ -139,13 +133,7 @@ class BuildingManager:
         font:       pygame.font.Font,
     ) -> None:
         """Draw city name labels above each visible building (call with no clip)."""
-        for b in self._buildings:
-            sx = field_rect.x + b.world_x - int(cam_x)
-            sy = field_rect.y + b.world_y - int(cam_y)
-            if sx + _BSIZE <= field_rect.x or sx >= field_rect.right:
-                continue
-            if sy + _BSIZE <= field_rect.y or sy >= field_rect.bottom:
-                continue
+        for b, sx, sy in self._visible_buildings(cam_x, cam_y, field_rect):
             label = font.render(b.name, True, (255, 255, 160))
             lx = sx + (_BSIZE - label.get_width()) // 2
             ly = sy - label.get_height() - 2
@@ -167,6 +155,22 @@ class BuildingManager:
     # ------------------------------------------------------------------
     # Private helpers
     # ------------------------------------------------------------------
+
+    def _visible_buildings(
+        self,
+        cam_x:      float,
+        cam_y:      float,
+        field_rect: pygame.Rect,
+    ):
+        """Yield (building, screen_x, screen_y) for each building in the viewport."""
+        for b in self._buildings:
+            sx = field_rect.x + b.world_x - int(cam_x)
+            sy = field_rect.y + b.world_y - int(cam_y)
+            if sx + _BSIZE <= field_rect.x or sx >= field_rect.right:
+                continue
+            if sy + _BSIZE <= field_rect.y or sy >= field_rect.bottom:
+                continue
+            yield b, sx, sy
 
     def _load(self, map_data: list[list[int]]) -> None:
         size      = settings.MAP_SIZE

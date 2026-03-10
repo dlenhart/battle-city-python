@@ -7,20 +7,20 @@ A camera follows the player and maps world coords to screen coords within
 the field viewport.
 """
 
-import sys
 import pygame
 
 import settings
 from src.assets import (
-    find_asset,
+    require_asset,
+    optional_asset,
     load_tank_sprites,
     load_ground_tile,
-    load_engine_sound,
+    load_sound,
     load_bullet_sprites,
     load_map_data,
     load_tile_sheet,
-    load_sound,
 )
+from src.camera   import Camera
 from src.player   import Player
 from src.bullet   import Bullet
 from src.hud      import HUD
@@ -48,60 +48,32 @@ class Game:
         self._screen = pygame.display.set_mode((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
         self._set_icon()
         pygame.display.set_caption("Battle City")
-        self._clock = pygame.time.Clock()
+        self._clock  = pygame.time.Clock()
+        self._camera = Camera()
 
     def _set_icon(self) -> None:
-        icon_path = find_asset("BC.ico")
+        icon_path = optional_asset("BC.ico")
         if icon_path:
             pygame.display.set_icon(pygame.image.load(icon_path))
 
     def _load_assets(self) -> None:
-        tanks_path     = find_asset("imgTanks.bmp")
-        ground_path    = find_asset("imgGround.bmp")
-        rocks_path     = find_asset("imgRocks.bmp")
-        lava_path      = find_asset("imgLava.bmp")
-        buildings_path = find_asset("imgBuildings.bmp")
-        map_path       = find_asset("map.dat")
-        engine_path    = find_asset("engine.wav")
+        self._tank_frames    = load_tank_sprites(require_asset("imgTanks.bmp"), tank_row=0)
+        self._ground_tile    = load_ground_tile(require_asset("imgGround.bmp"))
+        self._rock_sheet     = load_tile_sheet(require_asset("imgRocks.bmp"))
+        self._lava_sheet     = load_tile_sheet(require_asset("imgLava.bmp"))
+        self._building_sheet = load_tile_sheet(require_asset("imgBuildings.bmp"))
+        self._map_data       = load_map_data(require_asset("map.dat"))
+        self._bullet_sheet   = load_bullet_sprites(require_asset("imgbullets.bmp"))
 
-        for name, path in [
-            ("imgTanks.bmp",     tanks_path),
-            ("imgGround.bmp",    ground_path),
-            ("imgRocks.bmp",     rocks_path),
-            ("imgLava.bmp",      lava_path),
-            ("imgBuildings.bmp", buildings_path),
-            ("map.dat",          map_path),
-        ]:
-            if not path:
-                sys.exit(f"ERROR: {name} not found.")
-            print(f"Loading {name}: {path}")
-
-        self._tank_frames     = load_tank_sprites(tanks_path, tank_row=0)
-        self._ground_tile     = load_ground_tile(ground_path)
-        self._rock_sheet      = load_tile_sheet(rocks_path)
-        self._lava_sheet      = load_tile_sheet(lava_path)
-        self._building_sheet  = load_tile_sheet(buildings_path)
-        self._map_data        = load_map_data(map_path)
-
-        self._engine_sound   = load_engine_sound(engine_path)
+        self._engine_sound   = load_sound(
+            optional_asset("engine.wav", "WARNING: engine.wav not found — tank sounds disabled"),
+            volume=0.6,
+        )
         self._engine_channel = None
-        if engine_path:
-            print(f"Loading engine sound: {engine_path}")
-        else:
-            print("WARNING: engine.wav not found — tank sounds disabled")
-
-        laser_path = find_asset("laser.wav")
-        if laser_path:
-            print(f"Loading laser sound: {laser_path}")
-        else:
-            print("WARNING: laser.wav not found — shoot sound disabled")
-        self._laser_sound = load_sound(laser_path, volume=0.7)
-
-        bullets_path = find_asset("imgbullets.bmp")
-        if not bullets_path:
-            sys.exit("ERROR: imgbullets.bmp not found.")
-        print(f"Loading bullets: {bullets_path}")
-        self._bullet_sheet = load_bullet_sprites(bullets_path)
+        self._laser_sound    = load_sound(
+            optional_asset("laser.wav", "WARNING: laser.wav not found — shoot sound disabled"),
+            volume=0.7,
+        )
 
     def _create_map(self) -> None:
         self._game_map  = GameMap(self._map_data, self._rock_sheet, self._lava_sheet)
@@ -186,23 +158,12 @@ class Game:
                 self._engine_channel = None
 
     # ------------------------------------------------------------------
-    # Camera
-    # ------------------------------------------------------------------
-
-    def _compute_camera(self) -> tuple[float, float]:
-        cam_x = self._player.x - settings.FIELD_WIDTH  / 2 + settings.TANK_FRAME_W / 2
-        cam_y = self._player.y - settings.FIELD_HEIGHT / 2 + settings.TANK_FRAME_H / 2
-        max_cam = float(settings.MAP_PIXEL_SIZE)
-        cam_x = max(0.0, min(cam_x, max_cam - settings.FIELD_WIDTH))
-        cam_y = max(0.0, min(cam_y, max_cam - settings.FIELD_HEIGHT))
-        return cam_x, cam_y
-
-    # ------------------------------------------------------------------
     # Drawing
     # ------------------------------------------------------------------
 
     def _draw(self) -> None:
-        cam_x, cam_y = self._compute_camera()
+        self._camera.follow(self._player.x, self._player.y)
+        cam_x, cam_y = self._camera.x, self._camera.y
         field_rect = pygame.Rect(
             settings.FIELD_X, settings.FIELD_Y,
             settings.FIELD_WIDTH, settings.FIELD_HEIGHT,
@@ -215,8 +176,8 @@ class Game:
         self._draw_ground(cam_x, cam_y)
         self._game_map.draw(self._screen, cam_x, cam_y, field_rect)
         self._buildings.draw_sprites(self._screen, cam_x, cam_y, field_rect, self._building_sheet)
-        self._draw_player(cam_x, cam_y)
-        self._draw_bullets(cam_x, cam_y)
+        self._draw_player()
+        self._draw_bullets()
         self._screen.set_clip(None)
 
         # --- unclipped ---
@@ -228,25 +189,19 @@ class Game:
         tw, th = self._ground_tile.get_width(), self._ground_tile.get_height()
         off_x  = int(cam_x) % tw
         off_y  = int(cam_y) % th
-        y = settings.FIELD_Y - off_y
-        while y < settings.FIELD_Y + settings.FIELD_HEIGHT:
-            x = settings.FIELD_X - off_x
-            while x < settings.FIELD_X + settings.FIELD_WIDTH:
+        for y in range(settings.FIELD_Y - off_y, settings.FIELD_Y + settings.FIELD_HEIGHT, th):
+            for x in range(settings.FIELD_X - off_x, settings.FIELD_X + settings.FIELD_WIDTH, tw):
                 self._screen.blit(self._ground_tile, (x, y))
-                x += tw
-            y += th
 
-    def _draw_player(self, cam_x: float, cam_y: float) -> None:
-        screen_x = settings.FIELD_X + int(self._player.x - cam_x)
-        screen_y = settings.FIELD_Y + int(self._player.y - cam_y)
-        self._screen.blit(self._tank_frames[self._player.sprite_col], (screen_x, screen_y))
+    def _draw_player(self) -> None:
+        sx, sy = self._camera.to_screen(self._player.x, self._player.y)
+        self._screen.blit(self._tank_frames[self._player.sprite_col], (sx, sy))
 
-    def _draw_bullets(self, cam_x: float, cam_y: float) -> None:
+    def _draw_bullets(self) -> None:
         for bullet in self._bullets:
             src_x, src_y, w, h = bullet.sprite_rect
-            screen_x = settings.FIELD_X + int(bullet.x - cam_x)
-            screen_y = settings.FIELD_Y + int(bullet.y - cam_y)
-            self._screen.blit(self._bullet_sheet, (screen_x, screen_y),
+            sx, sy = self._camera.to_screen(bullet.x, bullet.y)
+            self._screen.blit(self._bullet_sheet, (sx, sy),
                               pygame.Rect(src_x, src_y, w, h))
 
     def _quit(self) -> None:

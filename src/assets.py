@@ -3,11 +3,13 @@ src/assets.py — Asset loading utilities.
 """
 
 import os
+import sys
 import pygame
 import settings
 
 # Project root = one level above this file (src/)
 _PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+_MAGENTA = (255, 0, 255)
 
 
 def find_asset(filename: str) -> str | None:
@@ -24,6 +26,41 @@ def find_asset(filename: str) -> str | None:
             return path
     return None
 
+
+def require_asset(filename: str) -> str:
+    """Return the path to a required asset, or exit with an error if not found."""
+    path = find_asset(filename)
+    if not path:
+        sys.exit(f"ERROR: {filename} not found.")
+    print(f"Loading {filename}: {path}")
+    return path
+
+
+def optional_asset(filename: str, warning: str | None = None) -> str | None:
+    """Return the path to an optional asset, printing a warning if not found."""
+    path = find_asset(filename)
+    if path:
+        print(f"Loading {filename}: {path}")
+    else:
+        print(warning or f"WARNING: {filename} not found — disabled")
+    return path
+
+
+# ------------------------------------------------------------------
+# Internal sheet loader
+# ------------------------------------------------------------------
+
+def _load_colorkeyed_sheet(filepath: str) -> pygame.Surface:
+    """Load a BMP spritesheet and set the colorkey from pixel (0, 0)."""
+    sheet = pygame.image.load(filepath).convert()
+    colorkey = sheet.get_at((0, 0))
+    sheet.set_colorkey(colorkey)
+    return sheet
+
+
+# ------------------------------------------------------------------
+# Public loaders
+# ------------------------------------------------------------------
 
 def extract_frame(
     sheet: pygame.Surface, col: int, row: int, colorkey
@@ -49,17 +86,16 @@ def load_tank_sprites(filepath: str, tank_row: int = 0) -> list[pygame.Surface]:
       - Each row     = one tank type  (row 0 = player / friend commando).
       - Sprite col   = direction // 2   (direction is 0-31, matching C++).
 
-    Cardinal column mapping:
+    Cardinal column mapping (clockwise from North):
       Col  0 = North (UP)
-      Col  4 = West  (LEFT)
+      Col  4 = East  (RIGHT)
       Col  8 = South (DOWN)
-      Col 12 = East  (RIGHT)
+      Col 12 = West  (LEFT)
 
     Returns a list of pygame.Surface frames indexed by (direction // 2).
     """
-    sheet    = pygame.image.load(filepath).convert()
+    sheet    = _load_colorkeyed_sheet(filepath)
     colorkey = sheet.get_at((0, 0))
-    sheet.set_colorkey(colorkey)
 
     cols = sheet.get_width()  // settings.TANK_FRAME_W
     rows = sheet.get_height() // settings.TANK_FRAME_H
@@ -77,16 +113,6 @@ def load_ground_tile(filepath: str) -> pygame.Surface:
     return tile
 
 
-def build_ground_surface(tile: pygame.Surface) -> pygame.Surface:
-    """Pre-render the full playing field by tiling the ground image."""
-    surf = pygame.Surface((settings.FIELD_WIDTH, settings.FIELD_HEIGHT))
-    tw, th = tile.get_width(), tile.get_height()
-    for y in range(0, settings.FIELD_HEIGHT, th):
-        for x in range(0, settings.FIELD_WIDTH, tw):
-            surf.blit(tile, (x, y))
-    return surf
-
-
 def load_bullet_sprites(filepath: str) -> pygame.Surface:
     """
     Load imgbullets.bmp and return the surface with colorkey set.
@@ -98,9 +124,7 @@ def load_bullet_sprites(filepath: str) -> pygame.Surface:
     The surface is returned as-is; callers blit sub-rects from it each frame
     using Bullet.sprite_rect so no pre-extraction is needed.
     """
-    sheet    = pygame.image.load(filepath).convert()
-    colorkey = sheet.get_at((0, 0))
-    sheet.set_colorkey(colorkey)
+    sheet = _load_colorkeyed_sheet(filepath)
     print(f"[imgBullets] {sheet.get_width()}x{sheet.get_height()}")
     return sheet
 
@@ -119,8 +143,6 @@ def load_map_data(filepath: str) -> list[list[int]]:
     print(f"[map.dat] Loaded {size}×{size} world map ({len(raw)} bytes)")
     return data
 
-
-_MAGENTA = (255, 0, 255)
 
 def load_tile_sheet(filepath: str) -> pygame.Surface:
     """
@@ -158,8 +180,3 @@ def load_sound(filepath: str | None, volume: float = 1.0) -> pygame.mixer.Sound 
     sound = pygame.mixer.Sound(filepath)
     sound.set_volume(volume)
     return sound
-
-
-def load_engine_sound(filepath: str | None, volume: float = 0.6) -> pygame.mixer.Sound | None:
-    """Load the tank engine WAV, set volume, and return it. Returns None on failure."""
-    return load_sound(filepath, volume)
