@@ -72,16 +72,17 @@ class GameMap:
         tx1 = min(size - 1, int((camera_x + field_rect.width)  // ts) + 1)
         ty1 = min(size - 1, int((camera_y + field_rect.height) // ts) + 1)
 
+        src_rect = pygame.Rect(0, 0, ts, ts)  # reused each tile — avoids per-tile allocation
         for tx in range(tx0, tx1 + 1):
             for ty in range(ty0, ty1 + 1):
                 tile_type = self._data[tx][ty]
                 if tile_type == settings.MAP_TILE_EMPTY:
                     continue
 
-                sheet    = self._rock_sheet if tile_type == settings.MAP_TILE_ROCK else self._lava_sheet
-                src_rect = pygame.Rect(self._tiles[tx][ty], 0, ts, ts)
-                screen_x = field_rect.x + tx * ts - int(camera_x)
-                screen_y = field_rect.y + ty * ts - int(camera_y)
+                sheet      = self._rock_sheet if tile_type == settings.MAP_TILE_ROCK else self._lava_sheet
+                src_rect.x = self._tiles[tx][ty]
+                screen_x   = field_rect.x + tx * ts - int(camera_x)
+                screen_y   = field_rect.y + ty * ts - int(camera_y)
                 screen.blit(sheet, (screen_x, screen_y), src_rect)
 
     # ------------------------------------------------------------------

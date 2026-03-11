@@ -66,6 +66,7 @@ class Game:
         self._lava_sheet     = load_tile_sheet(require_asset("imgLava.bmp"))
         self._building_sheet = load_tile_sheet(require_asset("imgBuildings.bmp"))
         self._map_data       = load_map_data(require_asset("map.dat"))
+        self._ground_surf    = self._build_ground_surf()
         self._bullet_sheet   = load_bullet_sprites(require_asset("imgbullets.bmp"))
 
         interface_path = require_asset("imgInterface.bmp")
@@ -221,13 +222,32 @@ class Game:
         self._minimap.draw(self._screen, self._player)
         pygame.display.flip()
 
+    def _build_ground_surf(self) -> pygame.Surface:
+        """
+        Pre-bake a surface one tile larger than the field in each axis so that
+        any scroll offset [0, tile_w) × [0, tile_h) can be served with a single
+        sub-rect blit instead of a nested loop of ~25 blits per frame.
+        """
+        tw  = self._ground_tile.get_width()
+        th  = self._ground_tile.get_height()
+        w   = settings.FIELD_WIDTH  + tw
+        h   = settings.FIELD_HEIGHT + th
+        surf = pygame.Surface((w, h))
+        for y in range(0, h, th):
+            for x in range(0, w, tw):
+                surf.blit(self._ground_tile, (x, y))
+        return surf
+
     def _draw_ground(self, cam_x: float, cam_y: float) -> None:
-        tw, th = self._ground_tile.get_width(), self._ground_tile.get_height()
+        tw     = self._ground_tile.get_width()
+        th     = self._ground_tile.get_height()
         off_x  = int(cam_x) % tw
         off_y  = int(cam_y) % th
-        for y in range(settings.FIELD_Y - off_y, settings.FIELD_Y + settings.FIELD_HEIGHT, th):
-            for x in range(settings.FIELD_X - off_x, settings.FIELD_X + settings.FIELD_WIDTH, tw):
-                self._screen.blit(self._ground_tile, (x, y))
+        self._screen.blit(
+            self._ground_surf,
+            (settings.FIELD_X, settings.FIELD_Y),
+            pygame.Rect(off_x, off_y, settings.FIELD_WIDTH, settings.FIELD_HEIGHT),
+        )
 
     def _draw_player(self) -> None:
         sx, sy = self._camera.to_screen(self._player.x, self._player.y)

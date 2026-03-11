@@ -60,6 +60,9 @@ class Minimap:
         self.visible    = True   # always shown in the interface panel radar slot
         self._buildings = buildings.buildings   # list[Building]
         self._terrain   = self._build_terrain(map_data)
+        # Pre-allocate surfaces once; reuse every frame to avoid per-frame GC pressure.
+        self._viewport_surf = pygame.Surface((VIEWPORT_TILES, VIEWPORT_TILES))
+        self._scaled_surf   = pygame.Surface((MINIMAP_W, MINIMAP_H))
 
     # ------------------------------------------------------------------
     # Public interface
@@ -84,7 +87,7 @@ class Minimap:
         top  = pty - half
 
         # --- Crop the terrain surface to the viewport ---
-        viewport = pygame.Surface((VIEWPORT_TILES, VIEWPORT_TILES))
+        viewport = self._viewport_surf
         viewport.fill(_COLOR_BG)
 
         src_x = max(0, left)
@@ -103,8 +106,8 @@ class Minimap:
                 pygame.Rect(src_x, src_y, src_w, src_h),
             )
 
-        # --- Scale viewport to the minimap box size ---
-        scaled = pygame.transform.scale(viewport, (MINIMAP_W, MINIMAP_H))
+        # --- Scale viewport into the pre-allocated scaled surface ---
+        scaled = pygame.transform.scale(viewport, (MINIMAP_W, MINIMAP_H), self._scaled_surf)
 
         # --- Overlay city dots (only those inside the viewport) ---
         half_dot = _CITY_DOT // 2

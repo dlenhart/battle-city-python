@@ -58,6 +58,7 @@ class Building:
         self.city_index = city_index
         self._anim_step  = random.randint(0, _NUM_ANIM_STEPS - 1)
         self._anim_timer = 0.0
+        self._label_surf: pygame.Surface | None = None  # cached on first draw
 
     # ------------------------------------------------------------------
     # Properties
@@ -134,7 +135,9 @@ class BuildingManager:
     ) -> None:
         """Draw city name labels above each visible building (call with no clip)."""
         for b, sx, sy in self._visible_buildings(cam_x, cam_y, field_rect):
-            label = font.render(b.name, True, (255, 255, 160))
+            if b._label_surf is None:
+                b._label_surf = font.render(b.name, True, (255, 255, 160))
+            label = b._label_surf
             lx = sx + (_BSIZE - label.get_width()) // 2
             ly = sy - label.get_height() - 2
             screen.blit(label, (lx, ly))
