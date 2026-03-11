@@ -68,6 +68,9 @@ class Game:
         self._map_data       = load_map_data(require_asset("map.dat"))
         self._bullet_sheet   = load_bullet_sprites(require_asset("imgbullets.bmp"))
 
+        interface_path = require_asset("imgInterface.bmp")
+        self._interface_img  = pygame.image.load(interface_path).convert()
+
         self._engine_sound   = load_sound(
             optional_asset("engine.wav", "WARNING: engine.wav not found — tank sounds disabled"),
             volume=0.6,
@@ -138,8 +141,6 @@ class Game:
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
                     return False
-                if event.key == pygame.K_m:
-                    self._minimap.toggle()
         return True
 
     def _update(self, dt: float) -> None:
@@ -216,6 +217,7 @@ class Game:
         # --- unclipped ---
         self._buildings.draw_labels(self._screen, cam_x, cam_y, field_rect, self._font)
         self._hud.draw(self._screen, self._player)
+        self._screen.blit(self._interface_img, (settings.PANEL_X, settings.PANEL_Y))
         self._minimap.draw(self._screen, self._player)
         pygame.display.flip()
 

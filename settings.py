@@ -3,8 +3,6 @@
 # ---------------------------------------------------------------------------
 
 # Display
-SCREEN_WIDTH  = 800
-SCREEN_HEIGHT = 600
 FPS           = 60
 
 # Sprite dimensions (from original C++ source)
@@ -20,7 +18,7 @@ NUM_DIRECTIONS  = 32
 NUM_SPRITE_COLS = 16  # spritesheet columns = NUM_DIRECTIONS // 2
 
 # Movement (original C++ uses MOVEMENT_SPEED_PLAYER = 0.38 * TimePassed)
-MOVEMENT_SPEED = 150.0  # pixels per second (forward / backward)
+MOVEMENT_SPEED = 220.0  # pixels per second (forward / backward)
 TURN_INTERVAL  = 0.05   # seconds per direction step (50 ms, matches original)
 
 # Colors
@@ -34,8 +32,19 @@ FIELD_COLS   = 13
 FIELD_ROWS   = 10
 FIELD_WIDTH  = FIELD_COLS * TANK_FRAME_W
 FIELD_HEIGHT = FIELD_ROWS * TANK_FRAME_H
-FIELD_X      = (SCREEN_WIDTH  - FIELD_WIDTH)  // 2
-FIELD_Y      = (SCREEN_HEIGHT - FIELD_HEIGHT) // 2
+FIELD_X      = 4
+FIELD_Y      = 4
+
+# Control panel (imgInterface.bmp = 200x430)
+PANEL_GAP    = 8
+PANEL_X      = FIELD_X + FIELD_WIDTH + PANEL_GAP
+PANEL_Y      = FIELD_Y
+PANEL_W      = 200
+PANEL_H      = 430
+
+# Screen dimensions derived from field + panel
+SCREEN_WIDTH  = PANEL_X + PANEL_W + 4
+SCREEN_HEIGHT = FIELD_Y + FIELD_HEIGHT + 4
 
 # World map (512×512 tiles of 48×48 px each)
 MAP_SIZE       = 512           # tiles per axis

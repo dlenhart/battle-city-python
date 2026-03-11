@@ -3,8 +3,8 @@
 import pytest
 import settings
 from src.minimap import (
-    Minimap, MINIMAP_SIZE, VIEWPORT_TILES, _MM_SCALE, _COLOR_ROCK,
-    _COLOR_LAVA, _COLOR_BG, _PLAYER_DOT,
+    Minimap, MINIMAP_W, MINIMAP_H, VIEWPORT_TILES, _MM_SCALE_X, _MM_SCALE_Y,
+    _COLOR_ROCK, _COLOR_LAVA, _COLOR_BG, _PLAYER_DOT,
 )
 
 
@@ -46,20 +46,21 @@ def _make_minimap(**kwargs):
 # ------------------------------------------------------------------
 
 class TestMinimapToggle:
-    def test_hidden_by_default(self):
+    def test_visible_by_default(self):
+        # Minimap is always shown in the interface panel radar slot
         mm = _make_minimap()
-        assert mm.visible is False
-
-    def test_toggle_once_shows(self):
-        mm = _make_minimap()
-        mm.toggle()
         assert mm.visible is True
 
-    def test_toggle_twice_hides(self):
+    def test_toggle_once_hides(self):
+        mm = _make_minimap()
+        mm.toggle()
+        assert mm.visible is False
+
+    def test_toggle_twice_restores(self):
         mm = _make_minimap()
         mm.toggle()
         mm.toggle()
-        assert mm.visible is False
+        assert mm.visible is True
 
 
 # ------------------------------------------------------------------
@@ -72,7 +73,8 @@ class TestViewportConstants:
         assert VIEWPORT_TILES == expected
 
     def test_mm_scale_matches_ratio(self):
-        assert _MM_SCALE == pytest.approx(MINIMAP_SIZE / VIEWPORT_TILES)
+        assert _MM_SCALE_X == pytest.approx(MINIMAP_W / VIEWPORT_TILES)
+        assert _MM_SCALE_Y == pytest.approx(MINIMAP_H / VIEWPORT_TILES)
 
 
 # ------------------------------------------------------------------
@@ -95,24 +97,22 @@ class TestWorldToMinimap:
             float(settings.TILE_SIZE), float(settings.TILE_SIZE),
             left=0, top=0,
         )
-        # rel_x = 1 tile, scaled by _MM_SCALE
-        assert mx == pytest.approx(int(_MM_SCALE), abs=1)
-        assert my == pytest.approx(int(_MM_SCALE), abs=1)
+        assert mx == pytest.approx(int(_MM_SCALE_X), abs=1)
+        assert my == pytest.approx(int(_MM_SCALE_Y), abs=1)
 
     def test_left_top_offset_shifts_result(self):
         # Viewport starts at tile (10, 10); player at tile (15, 15)
         wx = 15 * settings.TILE_SIZE
         wy = 15 * settings.TILE_SIZE
         mx, my = self._call(wx, wy, left=10, top=10)
-        expected = int(5 * _MM_SCALE)
-        assert mx == pytest.approx(expected, abs=1)
-        assert my == pytest.approx(expected, abs=1)
+        assert mx == pytest.approx(int(5 * _MM_SCALE_X), abs=1)
+        assert my == pytest.approx(int(5 * _MM_SCALE_Y), abs=1)
 
     def test_clamped_to_minimap_bounds(self):
-        # Way off screen — should clamp to MINIMAP_SIZE - 1
+        # Way off screen — should clamp to MINIMAP_W/H - 1
         mx, my = self._call(999999.0, 999999.0, left=0, top=0)
-        assert mx == MINIMAP_SIZE - 1
-        assert my == MINIMAP_SIZE - 1
+        assert mx == MINIMAP_W - 1
+        assert my == MINIMAP_H - 1
 
     def test_returns_integers(self):
         mx, my = self._call(1234.5, 6789.1, left=5, top=5)

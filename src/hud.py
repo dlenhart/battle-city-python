@@ -20,9 +20,6 @@ class HUD:
         .heading_degrees properties works.
         """
         self._draw_border(screen)
-        self._draw_title(screen)
-        self._draw_player_info(screen, player)
-        self._draw_hint(screen)
 
     # ------------------------------------------------------------------
     # Private helpers
