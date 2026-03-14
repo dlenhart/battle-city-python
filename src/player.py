@@ -27,12 +27,22 @@ class Player:
       SHIFT        — fire cannon
     """
 
-    def __init__(self, x: float, y: float, direction: int = 0) -> None:
+    def __init__(
+        self,
+        x: float,
+        y: float,
+        direction: int = 0,
+        city_x: float = 0.0,
+        city_y: float = 0.0,
+    ) -> None:
         self.x          = x
         self.y          = y
         self.direction  = direction  # 0-31
         self.is_moving  = 0         # 1=forward, -1=backward, 0=stopped
         self.is_turning = 0         # 1=right (CW), -1=left (CCW), 0=stopped
+        self.hp         = settings.MAX_HEALTH
+        self.city_x     = city_x
+        self.city_y     = city_y
 
         self._turn_timer   = 0.0
         self._fire_cooldown = 0.0   # seconds until next shot is allowed

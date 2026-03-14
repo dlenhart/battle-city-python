@@ -57,3 +57,22 @@ MAP_TILE_EMPTY = 0
 MAP_TILE_LAVA  = 1
 MAP_TILE_ROCK  = 2
 MAP_TILE_CITY  = 3
+
+# --- Home Arrow (imgArrows.bmp) ---
+ARROW_FRAME_W    = 40                      # each of the 8 frames is 40×40 px
+ARROW_FRAME_H    = 40
+ARROW_NUM_FRAMES = 8
+ARROW_PANEL_X    = PANEL_X + 5            # C++ MaxMapX + 5
+ARROW_PANEL_Y    = PANEL_Y + 160          # C++ absolute Y = 160
+
+# --- Health Bar (imgHealth.bmp) ---
+MAX_HEALTH       = 40                      # C++ MAX_HEALTH = 40
+HEALTH_PANEL_X   = PANEL_X + 137          # C++ MaxMapX + 137
+HEALTH_BASE_Y    = PANEL_Y + 250          # C++ absolute Y baseline = 250
+HEALTH_MAX_H     = 87                      # max pixel height of bar
+HEALTH_W         = 38                      # fixed pixel width
+
+# Damage values per bullet type (for future use)
+DAMAGE_LASER     = 5
+DAMAGE_ROCKET    = 8
+DAMAGE_MINE      = 19

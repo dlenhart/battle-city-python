@@ -333,3 +333,26 @@ class TestPlayerFiring:
         p.update(FIRE_COOLDOWN + 0.01)   # advance past cooldown (no tile check)
         p._fire_requested = True
         assert p.try_fire() is not None
+
+
+# ------------------------------------------------------------------
+# Health and city spawn
+# ------------------------------------------------------------------
+
+class TestPlayerHealthAndCity:
+    def test_hp_initialises_to_max_health(self):
+        p = Player(0.0, 0.0, direction=0)
+        assert p.hp == settings.MAX_HEALTH
+
+    def test_city_coords_default_to_zero(self):
+        p = Player(0.0, 0.0, direction=0)
+        assert p.city_x == 0.0 and p.city_y == 0.0
+
+    def test_city_coords_stored(self):
+        p = Player(0.0, 0.0, direction=0, city_x=500.0, city_y=600.0)
+        assert p.city_x == 500.0 and p.city_y == 600.0
+
+    def test_hp_mutable(self):
+        p = Player(0.0, 0.0, direction=0)
+        p.hp = 20
+        assert p.hp == 20

@@ -81,8 +81,8 @@ class GameMap:
 
                 sheet      = self._rock_sheet if tile_type == settings.MAP_TILE_ROCK else self._lava_sheet
                 src_rect.x = self._tiles[tx][ty]
-                screen_x   = field_rect.x + tx * ts - int(camera_x)
-                screen_y   = field_rect.y + ty * ts - int(camera_y)
+                screen_x   = field_rect.x + tx * ts - round(camera_x)
+                screen_y   = field_rect.y + ty * ts - round(camera_y)
                 screen.blit(sheet, (screen_x, screen_y), src_rect)
 
     # ------------------------------------------------------------------

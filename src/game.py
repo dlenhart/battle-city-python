@@ -31,6 +31,17 @@ from src.building  import BuildingManager
 from src.minimap   import Minimap
 
 
+def _arrow_frame(dif_x: float, dif_y: float) -> int:
+    """Return C++ spritesheet frame index (0–7): 0=East, 1=NE, 2=North, …
+
+    dif_x / dif_y is the vector from the player to the home city.
+    """
+    import math
+    angle_deg = math.degrees(math.atan2(dif_x, -dif_y)) % 360.0
+    n = int((angle_deg + 22.5) / 45.0) % 8   # 0=North clockwise
+    return (2 - n) % 8                         # remap to C++ frame order
+
+
 class Game:
     """Initializes pygame, loads assets, and runs the game loop."""
 
@@ -48,7 +59,11 @@ class Game:
     def _init_pygame(self) -> None:
         pygame.mixer.pre_init(44100, -16, 2, 512)
         pygame.init()
-        self._screen = pygame.display.set_mode((settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT))
+        self._screen = pygame.display.set_mode(
+            (settings.SCREEN_WIDTH, settings.SCREEN_HEIGHT),
+            pygame.DOUBLEBUF,
+            vsync=1,
+        )
         self._set_icon()
         pygame.display.set_caption("Battle City")
         self._clock  = pygame.time.Clock()
@@ -90,6 +105,10 @@ class Game:
         self._explosion_sheet = _load_colorkeyed_sheet(explosion_path)
         print(f"[imgSExplosion] {self._explosion_sheet.get_width()}x{self._explosion_sheet.get_height()}")
 
+        self._arrows_sheet     = _load_colorkeyed_sheet(require_asset("imgArrows.bmp"))
+        self._arrows_red_sheet = _load_colorkeyed_sheet(require_asset("imgArrowsRed.bmp"))
+        self._health_sheet     = _load_colorkeyed_sheet(require_asset("imgHealth.bmp"))
+
     def _create_map(self) -> None:
         self._game_map  = GameMap(self._map_data, self._rock_sheet, self._lava_sheet)
         self._buildings = BuildingManager(self._map_data)
@@ -97,7 +116,8 @@ class Game:
 
     def _create_player(self) -> None:
         start_x, start_y = self._buildings.random_spawn()
-        self._player     = Player(start_x, start_y, direction=0)
+        self._player     = Player(start_x, start_y, direction=0,
+                                  city_x=start_x, city_y=start_y)
         self._bullets:    list[Bullet]    = []
         self._explosions: list[Explosion] = []
 
@@ -220,6 +240,8 @@ class Game:
         self._hud.draw(self._screen, self._player)
         self._screen.blit(self._interface_img, (settings.PANEL_X, settings.PANEL_Y))
         self._minimap.draw(self._screen, self._player)
+        self._draw_home_arrow()
+        self._draw_health_bar()
         pygame.display.flip()
 
     def _build_ground_surf(self) -> pygame.Surface:
@@ -232,7 +254,7 @@ class Game:
         th  = self._ground_tile.get_height()
         w   = settings.FIELD_WIDTH  + tw
         h   = settings.FIELD_HEIGHT + th
-        surf = pygame.Surface((w, h))
+        surf = pygame.Surface((w, h)).convert()
         for y in range(0, h, th):
             for x in range(0, w, tw):
                 surf.blit(self._ground_tile, (x, y))
@@ -241,8 +263,8 @@ class Game:
     def _draw_ground(self, cam_x: float, cam_y: float) -> None:
         tw     = self._ground_tile.get_width()
         th     = self._ground_tile.get_height()
-        off_x  = int(cam_x) % tw
-        off_y  = int(cam_y) % th
+        off_x  = round(cam_x) % tw
+        off_y  = round(cam_y) % th
         self._screen.blit(
             self._ground_surf,
             (settings.FIELD_X, settings.FIELD_Y),
@@ -266,6 +288,29 @@ class Game:
             sx, sy = self._camera.to_screen(explosion.x, explosion.y)
             self._screen.blit(self._explosion_sheet, (sx, sy),
                               pygame.Rect(src_x, src_y, w, h))
+
+    def _draw_home_arrow(self) -> None:
+        dif_x = self._player.city_x - self._player.x
+        dif_y = self._player.city_y - self._player.y
+        frame = _arrow_frame(dif_x, dif_y)
+        self._screen.blit(
+            self._arrows_sheet,
+            (settings.ARROW_PANEL_X, settings.ARROW_PANEL_Y),
+            pygame.Rect(frame * settings.ARROW_FRAME_W, 0,
+                        settings.ARROW_FRAME_W, settings.ARROW_FRAME_H),
+        )
+
+    def _draw_health_bar(self) -> None:
+        percent   = max(0.0, min(1.0, self._player.hp / float(settings.MAX_HEALTH)))
+        height_px = int(percent * settings.HEALTH_MAX_H)
+        if height_px <= 0:
+            return
+        dest_y = settings.HEALTH_BASE_Y - height_px
+        self._screen.blit(
+            self._health_sheet,
+            (settings.HEALTH_PANEL_X, dest_y),
+            pygame.Rect(0, 0, settings.HEALTH_W, height_px),
+        )
 
     def _quit(self) -> None:
         pygame.quit()
