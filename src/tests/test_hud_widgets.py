@@ -2,7 +2,7 @@
 
 import random
 import settings
-from src.game import _arrow_frame
+from src.hud import arrow_frame as _arrow_frame
 
 
 class TestArrowFrame:

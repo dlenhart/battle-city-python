@@ -25,6 +25,7 @@ Collision (mirrors C++ CCollision.cpp city-center special case):
 import random
 import pygame
 import settings
+from src.animation import AnimationTimer
 
 # ------------------------------------------------------------------
 # City names — verbatim from C++ Structs.cpp CityList[] (indices 0–63)
@@ -56,8 +57,8 @@ class Building:
         self.tile_x     = tile_x
         self.tile_y     = tile_y
         self.city_index = city_index
-        self._anim_step  = random.randint(0, _NUM_ANIM_STEPS - 1)
-        self._anim_timer = 0.0
+        self._anim      = AnimationTimer(_ANIM_INTERVAL, _NUM_ANIM_STEPS,
+                                         random.randint(0, _NUM_ANIM_STEPS - 1))
         self._label_surf: pygame.Surface | None = None  # cached on first draw
 
     # ------------------------------------------------------------------
@@ -83,7 +84,7 @@ class Building:
     @property
     def sprite_src(self) -> pygame.Rect:
         """Source rect into imgBuildings.bmp for the current animation frame."""
-        src_x = (self._anim_step // 2) * _BSIZE
+        src_x = (self._anim.step // 2) * _BSIZE
         return pygame.Rect(src_x, 0, _BSIZE, _BSIZE)  # row 0 = City Center
 
     # ------------------------------------------------------------------
@@ -91,10 +92,7 @@ class Building:
     # ------------------------------------------------------------------
 
     def update(self, dt: float) -> None:
-        self._anim_timer += dt
-        if self._anim_timer >= _ANIM_INTERVAL:
-            self._anim_timer -= _ANIM_INTERVAL
-            self._anim_step   = (self._anim_step + 1) % _NUM_ANIM_STEPS
+        self._anim.tick(dt)
 
 
 class PlacedBuilding:
@@ -115,14 +113,13 @@ class PlacedBuilding:
 
     def __init__(self, tile_x: int, tile_y: int, menu_index: int) -> None:
         # tile_x, tile_y = TOP-LEFT tile of the 3×3 footprint
-        self.tile_x      = tile_x
-        self.tile_y      = tile_y
-        self.menu_index  = menu_index
-        btype            = settings.BUILDING_TYPES[menu_index]
-        # sprite_row: 1=Factory 2=Hospital 3=House 4=Research (matches C++ type//100)
-        self.sprite_row  = btype // 100
-        self._anim_step  = random.randint(0, _NUM_ANIM_STEPS - 1)
-        self._anim_timer = 0.0
+        self.tile_x     = tile_x
+        self.tile_y     = tile_y
+        self.menu_index = menu_index
+        # bclass stored once; sprite_row is the same value (type // 100)
+        self.bclass     = settings.BUILDING_TYPES[menu_index] // 100
+        self._anim      = AnimationTimer(_ANIM_INTERVAL, _NUM_ANIM_STEPS,
+                                         random.randint(0, _NUM_ANIM_STEPS - 1))
 
         # Population tracking
         self.pop: int          = 0
@@ -130,17 +127,8 @@ class PlacedBuilding:
 
         # Attachment: non-house buildings attach to a House to gain population.
         # House buildings track up to HOUSE_SLOTS attached buildings.
-        self.house_ref: "PlacedBuilding | None"              = None       # set by BuildingManager
-        self._attached: list["PlacedBuilding | None"]        = [None, None]  # house slots
-
-    # ------------------------------------------------------------------
-    # Building class helpers
-    # ------------------------------------------------------------------
-
-    @property
-    def bclass(self) -> int:
-        """Building class: 1=Factory 2=Hospital 3=House 4=Research."""
-        return settings.BUILDING_TYPES[self.menu_index] // 100
+        self.house_ref: "PlacedBuilding | None"       = None        # set by BuildingManager
+        self._attached: list["PlacedBuilding | None"] = [None, None]  # house slots
 
     @property
     def has_max_pop(self) -> bool:
@@ -191,14 +179,11 @@ class PlacedBuilding:
 
     @property
     def sprite_src(self) -> pygame.Rect:
-        src_x = (self._anim_step // 2) * _BSIZE
-        return pygame.Rect(src_x, self.sprite_row * _BSIZE, _BSIZE, _BSIZE)
+        src_x = (self._anim.step // 2) * _BSIZE
+        return pygame.Rect(src_x, self.bclass * _BSIZE, _BSIZE, _BSIZE)
 
     def update(self, dt: float) -> None:
-        self._anim_timer += dt
-        if self._anim_timer >= _ANIM_INTERVAL:
-            self._anim_timer -= _ANIM_INTERVAL
-            self._anim_step  = (self._anim_step + 1) % _NUM_ANIM_STEPS
+        self._anim.tick(dt)
 
 
 class BuildingManager:
@@ -281,14 +266,14 @@ class BuildingManager:
           House   (3xx)— pop at (+92, +92), row 0
           Research     — pop at (+96, +90), row 0; item icon at (+14, +98)
         """
-        for b, sx, sy in self._visible_buildings(cam_x, cam_y, field_rect):
+        for b, sx, sy in self._visible(self._buildings, cam_x, cam_y, field_rect):
             screen.blit(sheet, (sx, sy), b.sprite_src)
             # City Center population dots (row 1 of imgPopulation, pop=0 column)
             if pop_sheet:
                 screen.blit(pop_sheet, (sx + 96, sy + 49),
                             pygame.Rect(0, 48, 48, 48))
 
-        for pb, sx, sy in self._visible_placed(cam_x, cam_y, field_rect):
+        for pb, sx, sy in self._visible(self._placed, cam_x, cam_y, field_rect):
             screen.blit(sheet, (sx, sy), pb.sprite_src)
             bclass = pb.bclass
             bsub   = settings.BUILDING_TYPES[pb.menu_index] % 100
@@ -328,7 +313,7 @@ class BuildingManager:
         font:       pygame.font.Font,
     ) -> None:
         """Draw city name labels above each visible building (call with no clip)."""
-        for b, sx, sy in self._visible_buildings(cam_x, cam_y, field_rect):
+        for b, sx, sy in self._visible(self._buildings, cam_x, cam_y, field_rect):
             if b._label_surf is None:
                 b._label_surf = font.render(b.name, True, (255, 255, 160))
             label = b._label_surf
@@ -353,37 +338,20 @@ class BuildingManager:
     # Private helpers
     # ------------------------------------------------------------------
 
-    def _visible_buildings(
-        self,
-        cam_x:      float,
-        cam_y:      float,
-        field_rect: pygame.Rect,
-    ):
-        """Yield (building, screen_x, screen_y) for each city center in the viewport."""
-        for b in self._buildings:
-            sx = field_rect.x + b.world_x - int(cam_x)
-            sy = field_rect.y + b.world_y - int(cam_y)
-            if sx + _BSIZE <= field_rect.x or sx >= field_rect.right:
-                continue
-            if sy + _BSIZE <= field_rect.y or sy >= field_rect.bottom:
-                continue
-            yield b, sx, sy
+    def _visible(self, items, cam_x: float, cam_y: float, field_rect: pygame.Rect):
+        """Yield (item, screen_x, screen_y) for each item whose sprite is in the viewport.
 
-    def _visible_placed(
-        self,
-        cam_x:      float,
-        cam_y:      float,
-        field_rect: pygame.Rect,
-    ):
-        """Yield (placed_building, screen_x, screen_y) for each player-placed building."""
-        for pb in self._placed:
-            sx = field_rect.x + pb.world_x - int(cam_x)
-            sy = field_rect.y + pb.world_y - int(cam_y)
+        Works for any iterable whose elements expose `world_x` and `world_y`.
+        Replaces the former _visible_buildings and _visible_placed pair.
+        """
+        for item in items:
+            sx = field_rect.x + item.world_x - int(cam_x)
+            sy = field_rect.y + item.world_y - int(cam_y)
             if sx + _BSIZE <= field_rect.x or sx >= field_rect.right:
                 continue
             if sy + _BSIZE <= field_rect.y or sy >= field_rect.bottom:
                 continue
-            yield pb, sx, sy
+            yield item, sx, sy
 
     def _load(self, map_data: list[list[int]]) -> None:
         size      = settings.MAP_SIZE

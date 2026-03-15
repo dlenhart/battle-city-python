@@ -54,45 +54,45 @@ class TestBuildingProperties:
         b = make_building()
         seen_xs = set()
         for step in range(_NUM_ANIM_STEPS):
-            b._anim_step = step
+            b._anim._step = step
             seen_xs.add(b.sprite_src.x)
         # 6 steps → 3 unique source X offsets (0, 144, 288)
         assert seen_xs == {0, _BSIZE, _BSIZE * 2}
 
 
 # ------------------------------------------------------------------
-# Building animation
+# Building animation (now delegated to AnimationTimer)
 # ------------------------------------------------------------------
 
 class TestBuildingAnimation:
     def test_anim_step_advances_after_interval(self):
         b = make_building()
-        b._anim_step  = 0
-        b._anim_timer = 0.0
+        b._anim._step  = 0
+        b._anim._timer = 0.0
         b.update(_ANIM_INTERVAL)
-        assert b._anim_step == 1
+        assert b._anim.step == 1
 
     def test_anim_step_wraps_at_num_steps(self):
         b = make_building()
-        b._anim_step  = _NUM_ANIM_STEPS - 1
-        b._anim_timer = 0.0
+        b._anim._step  = _NUM_ANIM_STEPS - 1
+        b._anim._timer = 0.0
         b.update(_ANIM_INTERVAL)
-        assert b._anim_step == 0
+        assert b._anim.step == 0
 
     def test_anim_does_not_advance_before_interval(self):
         b = make_building()
-        b._anim_step  = 0
-        b._anim_timer = 0.0
+        b._anim._step  = 0
+        b._anim._timer = 0.0
         b.update(_ANIM_INTERVAL * 0.9)
-        assert b._anim_step == 0
+        assert b._anim.step == 0
 
     def test_large_dt_still_only_one_step(self):
-        # Building.update uses 'if' not 'while': one step per call.
+        # AnimationTimer.tick uses 'if' not 'while': one step per call.
         b = make_building()
-        b._anim_step  = 0
-        b._anim_timer = 0.0
+        b._anim._step  = 0
+        b._anim._timer = 0.0
         b.update(_ANIM_INTERVAL * 3)
-        assert b._anim_step == 1
+        assert b._anim.step == 1
 
 
 # ------------------------------------------------------------------

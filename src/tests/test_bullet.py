@@ -90,32 +90,32 @@ class TestBulletMovement:
 class TestBulletAnimation:
     def test_animation_starts_at_zero(self):
         b = make_bullet()
-        assert b._animation == 0
+        assert b._anim.step == 0
 
     def test_animation_advances_after_interval(self):
         b = make_bullet()
         b._animate(ANIM_INTERVAL)
-        assert b._animation == 1
+        assert b._anim.step == 1
 
     def test_animation_wraps_after_max_frames(self):
-        # _animate uses 'if' not 'while': one step per call.
+        # AnimationTimer.tick uses 'if' not 'while': one step per call.
         # Cycle through all frames one call at a time.
         b = make_bullet()
         for _ in range(NUM_ANIM_FRAMES):
             b._animate(ANIM_INTERVAL)
-        assert b._animation == 0
+        assert b._anim.step == 0
 
     def test_animation_does_not_advance_before_interval(self):
         b = make_bullet()
         b._animate(ANIM_INTERVAL * 0.9)
-        assert b._animation == 0
+        assert b._anim.step == 0
 
     def test_large_dt_still_only_one_step(self):
-        # _animate uses 'if', so a single call with 2.5x the interval
+        # AnimationTimer.tick uses 'if', so a single call with 2.5x the interval
         # only advances one frame (timer keeps the remainder).
         b = make_bullet()
         b._animate(ANIM_INTERVAL * 2.5)
-        assert b._animation == 1
+        assert b._anim.step == 1
 
 
 # ------------------------------------------------------------------
@@ -195,6 +195,6 @@ class TestBulletSpriteRect:
 
     def test_sprite_rect_x_advances_with_animation(self):
         b = make_bullet()
-        b._animation = 2
+        b._anim._step = 2
         src_x, _, _, _ = b.sprite_rect
         assert src_x == 2 * BULLET_SIZE

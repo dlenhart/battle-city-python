@@ -21,27 +21,17 @@ from src.assets import (
     load_tile_sheet,
     _load_colorkeyed_sheet,
 )
-from src.camera    import Camera
-from src.player    import Player
-from src.bullet    import Bullet
-from src.explosion import Explosion
-from src.hud       import HUD
-from src.map       import GameMap
+from src.camera       import Camera
+from src.collision    import CollisionMap
+from src.player       import Player
+from src.bullet       import Bullet
+from src.explosion    import Explosion
+from src.hud          import HUD, arrow_frame
+from src.map          import GameMap
 from src.building     import BuildingManager
 from src.minimap      import Minimap
 from src.build_system import CityBuildState
 from src.build_menu   import BuildMenu
-
-
-def _arrow_frame(dif_x: float, dif_y: float) -> int:
-    """Return C++ spritesheet frame index (0–7): 0=East, 1=NE, 2=North, …
-
-    dif_x / dif_y is the vector from the player to the home city.
-    """
-    import math
-    angle_deg = math.degrees(math.atan2(dif_x, -dif_y)) % 360.0
-    n = int((angle_deg + 22.5) / 45.0) % 8   # 0=North clockwise
-    return (2 - n) % 8                         # remap to C++ frame order
 
 
 class Game:
@@ -68,8 +58,13 @@ class Game:
         )
         self._set_icon()
         pygame.display.set_caption("Battle City")
-        self._clock  = pygame.time.Clock()
-        self._camera = Camera()
+        self._clock      = pygame.time.Clock()
+        self._camera     = Camera()
+        # Built once — used in both _draw() and _try_place_building() (DRY)
+        self._field_rect = pygame.Rect(
+            settings.FIELD_X, settings.FIELD_Y,
+            settings.FIELD_WIDTH, settings.FIELD_HEIGHT,
+        )
 
     def _set_icon(self) -> None:
         icon_path = optional_asset("BC.ico")
@@ -121,9 +116,10 @@ class Game:
         print(f"[imgPopulation] {self._pop_sheet.get_width()}x{self._pop_sheet.get_height()}")
 
     def _create_map(self) -> None:
-        self._game_map  = GameMap(self._map_data, self._rock_sheet, self._lava_sheet)
-        self._buildings = BuildingManager(self._map_data)
-        self._minimap   = Minimap(self._map_data, self._buildings)
+        self._game_map      = GameMap(self._map_data, self._rock_sheet, self._lava_sheet)
+        self._buildings     = BuildingManager(self._map_data)
+        self._minimap       = Minimap(self._map_data, self._buildings)
+        self._collision_map = CollisionMap(self._tile_check)
 
     def _create_player(self) -> None:
         start_x, start_y = self._buildings.random_spawn()
@@ -213,16 +209,12 @@ class Game:
     def _try_place_building(self, pos: tuple[int, int]) -> None:
         """Convert a screen click to a tile position and place the selected building."""
         mx, my = pos
-        field_rect = pygame.Rect(
-            settings.FIELD_X, settings.FIELD_Y,
-            settings.FIELD_WIDTH, settings.FIELD_HEIGHT,
-        )
-        if not field_rect.collidepoint(mx, my):
+        if not self._field_rect.collidepoint(mx, my):
             return
 
         cam_x, cam_y = self._camera.x, self._camera.y
-        world_x = mx - field_rect.x + int(cam_x)
-        world_y = my - field_rect.y + int(cam_y)
+        world_x = mx - self._field_rect.x + int(cam_x)
+        world_y = my - self._field_rect.y + int(cam_y)
         tile_x  = world_x // settings.TILE_SIZE
         tile_y  = world_y // settings.TILE_SIZE
 
@@ -255,7 +247,7 @@ class Game:
     def _update(self, dt: float) -> None:
         keys = pygame.key.get_pressed()
         self._player.handle_input(keys)
-        self._player.update(dt, get_tile=self._tile_check)
+        self._player.update(dt, get_tile=self._collision_map)
         self._buildings.update(dt)
         self._build_state.update(dt, self._buildings.placed_buildings)
         self._update_engine_sound()
@@ -307,35 +299,31 @@ class Game:
     def _draw(self) -> None:
         self._camera.follow(self._player.x, self._player.y)
         cam_x, cam_y = self._camera.x, self._camera.y
-        field_rect = pygame.Rect(
-            settings.FIELD_X, settings.FIELD_Y,
-            settings.FIELD_WIDTH, settings.FIELD_HEIGHT,
-        )
 
         self._screen.fill(settings.DARK_BG)
 
         # --- clipped to field viewport ---
-        self._screen.set_clip(field_rect)
+        self._screen.set_clip(self._field_rect)
         self._draw_ground(cam_x, cam_y)
-        self._game_map.draw(self._screen, cam_x, cam_y, field_rect)
+        self._game_map.draw(self._screen, cam_x, cam_y, self._field_rect)
         self._buildings.draw_sprites(
-            self._screen, cam_x, cam_y, field_rect, self._building_sheet,
+            self._screen, cam_x, cam_y, self._field_rect, self._building_sheet,
             items_sheet=self._items_sheet,
             pop_sheet=self._pop_sheet,
         )
         self._draw_player()
-        self._draw_bullets()
-        self._draw_explosions()
+        self._draw_world_entity_list(self._bullets,    self._bullet_sheet)
+        self._draw_world_entity_list(self._explosions, self._explosion_sheet)
         self._screen.set_clip(None)
 
         # --- unclipped ---
-        self._buildings.draw_labels(self._screen, cam_x, cam_y, field_rect, self._font)
+        self._buildings.draw_labels(self._screen, cam_x, cam_y, self._field_rect, self._font)
         self._hud.draw(self._screen, self._player)
         self._screen.blit(self._interface_img, (settings.PANEL_X, settings.PANEL_Y))
         self._minimap.draw(self._screen, self._player)
         self._draw_home_arrow()
         self._draw_health_bar()
-        self._draw_build_ui(cam_x, cam_y, field_rect)
+        self._draw_build_ui(cam_x, cam_y, self._field_rect)
         pygame.display.flip()
 
     def _build_ground_surf(self) -> pygame.Surface:
@@ -369,24 +357,25 @@ class Game:
         sx, sy = self._camera.to_screen(self._player.x, self._player.y)
         self._screen.blit(self._tank_frames[self._player.sprite_col], (sx, sy))
 
-    def _draw_bullets(self) -> None:
-        for bullet in self._bullets:
-            src_x, src_y, w, h = bullet.sprite_rect
-            sx, sy = self._camera.to_screen(bullet.x, bullet.y)
-            self._screen.blit(self._bullet_sheet, (sx, sy),
-                              pygame.Rect(src_x, src_y, w, h))
+    def _draw_world_entity_list(
+        self,
+        entities: list,
+        sheet:    pygame.Surface,
+    ) -> None:
+        """Blit all world entities that share a spritesheet.
 
-    def _draw_explosions(self) -> None:
-        for explosion in self._explosions:
-            src_x, src_y, w, h = explosion.sprite_rect
-            sx, sy = self._camera.to_screen(explosion.x, explosion.y)
-            self._screen.blit(self._explosion_sheet, (sx, sy),
-                              pygame.Rect(src_x, src_y, w, h))
+        Entities must expose `.x`, `.y`, and `.sprite_rect` → (src_x, src_y, w, h).
+        Replaces the former duplicated _draw_bullets / _draw_explosions methods.
+        """
+        for entity in entities:
+            src_x, src_y, w, h = entity.sprite_rect
+            sx, sy = self._camera.to_screen(entity.x, entity.y)
+            self._screen.blit(sheet, (sx, sy), pygame.Rect(src_x, src_y, w, h))
 
     def _draw_home_arrow(self) -> None:
         dif_x = self._player.city_x - self._player.x
         dif_y = self._player.city_y - self._player.y
-        frame = _arrow_frame(dif_x, dif_y)
+        frame = arrow_frame(dif_x, dif_y)
         self._screen.blit(
             self._arrows_sheet,
             (settings.ARROW_PANEL_X, settings.ARROW_PANEL_Y),

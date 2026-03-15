@@ -1,9 +1,25 @@
 """
 src/hud.py — Heads-up display rendering.
+
+Also exports arrow_frame() — a pure math helper that was previously a
+free function stranded in game.py.
 """
 
+import math
 import pygame
 import settings
+
+
+def arrow_frame(dif_x: float, dif_y: float) -> int:
+    """Return the imgArrows.bmp frame index (0-7) for a home-city direction vector.
+
+    Frame mapping (C++ convention): 0=East, 1=NE, 2=North, 3=NW,
+                                    4=West, 5=SW, 6=South, 7=SE.
+    dif_x / dif_y is the vector from the player to the home city.
+    """
+    angle_deg = math.degrees(math.atan2(dif_x, -dif_y)) % 360.0
+    n = int((angle_deg + 22.5) / 45.0) % 8   # 0=North clockwise
+    return (2 - n) % 8                         # remap to C++ frame order
 
 
 class HUD:
@@ -20,6 +36,9 @@ class HUD:
         .heading_degrees properties works.
         """
         self._draw_border(screen)
+        self._draw_title(screen)
+        self._draw_player_info(screen, player)
+        self._draw_hint(screen)
 
     # ------------------------------------------------------------------
     # Private helpers

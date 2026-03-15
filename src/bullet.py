@@ -13,11 +13,13 @@ Sprite layout of imgbullets.bmp (32x32, 8x8 frames):
 import math
 import pygame
 import settings
+from src.animation  import AnimationTimer
+from src.collision  import CollisionMap
 
-BULLET_SIZE     = 8       # sprite width and height in pixels
-BULLET_SPEED    = 300.0   # pixels per second (≈ 2× tank speed, matches C++ ratio)
-ANIM_INTERVAL   = 0.08    # seconds between animation frames
-NUM_ANIM_FRAMES = 4
+BULLET_SIZE      = 8       # sprite width and height in pixels
+BULLET_SPEED     = 300.0   # pixels per second (≈ 2× tank speed, matches C++ ratio)
+ANIM_INTERVAL    = 0.08    # seconds between animation frames
+NUM_ANIM_FRAMES  = 4
 BULLET_MAX_RANGE = settings.FIELD_WIDTH * 2  # dissolves after 2× the viewport width
 
 
@@ -37,9 +39,8 @@ class Bullet:
         self.bullet_type = bullet_type
         self.active      = True
 
-        self._animation  = 0
-        self._anim_timer = 0.0
-        self._distance   = 0.0   # total pixels traveled
+        self._anim     = AnimationTimer(ANIM_INTERVAL, NUM_ANIM_FRAMES)
+        self._distance = 0.0   # total pixels traveled
 
     def update(self, dt: float) -> None:
         """Move and animate the bullet. Sets active=False when out of bounds."""
@@ -48,22 +49,22 @@ class Bullet:
         self._check_bounds()
 
     def hits_terrain(self, get_tile) -> bool:
-        """Return True if the bullet's centre lies on a rock or blocked-building tile.
+        """Return True if the bullet's centre lies on a bullet-solid tile.
 
         Lava is intentionally excluded — bullets pass through lava (matching C++).
-        get_tile: callable(tile_x, tile_y) -> int, same composite check used by the player.
+        get_tile: callable(tx, ty) -> int — accepts a raw callable or CollisionMap.
+        Solid tile set is authoritative from CollisionMap.BULLET_SOLID.
         """
         ts = settings.TILE_SIZE
         cx = int(self.x + BULLET_SIZE / 2)
         cy = int(self.y + BULLET_SIZE / 2)
-        tile = get_tile(cx // ts, cy // ts)
-        return tile == settings.MAP_TILE_ROCK
+        return get_tile(cx // ts, cy // ts) in CollisionMap.BULLET_SOLID
 
     @property
     def sprite_rect(self) -> tuple[int, int, int, int]:
         """(src_x, src_y, width, height) into imgbullets.bmp for the current frame."""
         return (
-            self._animation  * BULLET_SIZE,
+            self._anim.step  * BULLET_SIZE,
             self.bullet_type * BULLET_SIZE,
             BULLET_SIZE,
             BULLET_SIZE,
@@ -83,10 +84,7 @@ class Bullet:
             self.active = False
 
     def _animate(self, dt: float) -> None:
-        self._anim_timer += dt
-        if self._anim_timer >= ANIM_INTERVAL:
-            self._anim_timer -= ANIM_INTERVAL
-            self._animation   = (self._animation + 1) % NUM_ANIM_FRAMES
+        self._anim.tick(dt)
 
     def _check_bounds(self) -> None:
         limit = float(settings.MAP_PIXEL_SIZE)

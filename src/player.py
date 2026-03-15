@@ -8,6 +8,7 @@ Contains no rendering code and no pygame display calls.
 import math
 import pygame
 import settings
+from src.collision import CollisionMap
 
 # Fire cooldown matches original C++ TIMER_SHOOT_LASER = 650 ms
 FIRE_COOLDOWN = 0.65
@@ -151,12 +152,15 @@ class Player:
 
     @staticmethod
     def _solid_at(px: float, py: float, get_tile) -> bool:
-        """Return True if the tank bounding box at (px, py) overlaps a solid tile."""
+        """Return True if the tank bounding box at (px, py) overlaps a solid tile.
+
+        Solid tile set is authoritative from CollisionMap.TANK_SOLID.
+        get_tile accepts a raw callable or CollisionMap (both are callable).
+        """
         ts   = settings.TILE_SIZE
         size = ts - 1  # inset 1px so flush alignment doesn't bleed into neighbour
-        solid = (settings.MAP_TILE_ROCK, settings.MAP_TILE_LAVA)
         for cx in (int(px), int(px + size)):
             for cy in (int(py), int(py + size)):
-                if get_tile(cx // ts, cy // ts) in solid:
+                if get_tile(cx // ts, cy // ts) in CollisionMap.TANK_SOLID:
                     return True
         return False
