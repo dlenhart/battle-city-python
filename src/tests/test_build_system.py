@@ -5,6 +5,29 @@ import settings
 from src.build_system import CityBuildState
 
 
+# ---------------------------------------------------------------------------
+# Stub: a minimal PlacedBuilding substitute for update() tests
+# ---------------------------------------------------------------------------
+
+class _FakePlaced:
+    """Minimal PlacedBuilding stub for passing to CityBuildState.update()."""
+    def __init__(self, menu_index: int, *, max_pop: bool = True):
+        self.menu_index  = menu_index
+        self.has_max_pop = max_pop
+
+
+def _maxpop(menu_index: int) -> list:
+    """Return a one-element placed-buildings list at max population."""
+    return [_FakePlaced(menu_index, max_pop=True)]
+
+
+def _nopop(menu_index: int) -> list:
+    """Return a one-element placed-buildings list with no population."""
+    return [_FakePlaced(menu_index, max_pop=False)]
+
+
+# ---------------------------------------------------------------------------
+
 class TestInitialState:
     def setup_method(self):
         self.state = CityBuildState()
@@ -93,55 +116,79 @@ class TestResearch:
     def setup_method(self):
         self.state = CityBuildState()
 
-    def test_research_timer_starts_on_placement(self):
-        self.state.try_place(2)  # Bazooka Research
+    def test_research_not_active_before_placement(self):
+        # Timer starts only once the building has max population, not at placement
+        self.state.try_place(2)  # Bazooka Research placed but no population yet
+        assert not self.state.is_researching(2)
+
+    def test_research_starts_when_max_pop_reached(self):
+        # After update with a max-pop building, is_researching should be True
+        self.state.try_place(2)
+        self.state.update(0.1, _maxpop(2))
         assert self.state.is_researching(2)
+
+    def test_research_stalls_without_population(self):
+        # Building placed, ticked once to start, then pop drops → timer freezes
+        self.state.try_place(2)
+        self.state.update(0.1, _maxpop(2))          # start timer
+        progress_before = self.state.research_progress(2)
+        self.state.update(1.0, _nopop(2))           # no pop → frozen
+        progress_after = self.state.research_progress(2)
+        assert progress_after == progress_before    # timer did not move
 
     def test_house_does_not_start_research(self):
         self.state.try_place(1)
+        self.state.update(1.0, [])
         assert not self.state.is_researching(1)
 
     def test_research_progress_decreases(self):
         self.state.try_place(2)
+        self.state.update(0.1, _maxpop(2))          # start timer
         p1 = self.state.research_progress(2)
-        self.state.update(1.0)
+        self.state.update(1.0, _maxpop(2))
         p2 = self.state.research_progress(2)
         assert p2 < p1
 
     def test_research_completes_and_unlocks_factory(self):
         self.state.try_place(2)  # Bazooka Research
-        self.state.update(settings.RESEARCH_TIMER + 0.1)
+        self.state.update(settings.RESEARCH_TIMER + 0.1, _maxpop(2))
         assert self.state.can_build[3] == 1  # Bazooka Factory unlocked
 
     def test_research_unlocks_dependent_research(self):
-        # Bazooka Research (k=0) completion unlocks Cloak Research (k=2, BUILD_TREE[2]=0)
-        self.state.try_place(2)  # Bazooka Research
-        self.state.update(settings.RESEARCH_TIMER + 0.1)
+        # Bazooka Research (k=0) completion unlocks Cloak Research (k=2) and MedKit (k=3)
+        self.state.try_place(2)
+        self.state.update(settings.RESEARCH_TIMER + 0.1, _maxpop(2))
         assert self.state.can_build[6] == 1  # Cloak Research
         assert self.state.can_build[8] == 1  # MedKit Research
 
     def test_turret_research_unlocks_plasma_and_mine(self):
         self.state.try_place(4)  # Turret Research (k=1)
-        self.state.update(settings.RESEARCH_TIMER + 0.1)
+        self.state.update(settings.RESEARCH_TIMER + 0.1, _maxpop(4))
         assert self.state.can_build[10] == 1  # Plasma Turret Research
         assert self.state.can_build[12] == 1  # Mine Research
 
     def test_medkit_research_unlocks_hospital(self):
-        # MedKit Research (k=3) should unlock Hospital
         self.state.can_build[8] = 1  # manually unlock MedKit Research
         self.state.try_place(8)
-        self.state.update(settings.RESEARCH_TIMER + 0.1)
+        self.state.update(settings.RESEARCH_TIMER + 0.1, _maxpop(8))
         assert self.state.can_build[0] == 1  # Hospital
 
     def test_no_double_unlock(self):
         # Already-built research (value=2) should not be reset to 1 by a dependent unlock
         self.state.try_place(4)  # Turret Research — marks it 2
-        self.state.update(settings.RESEARCH_TIMER + 0.1)
-        # Placing Turret Factory, then researching Plasma Turret:
+        self.state.update(settings.RESEARCH_TIMER + 0.1, _maxpop(4))
         self.state.can_build[5] = 1
         self.state.try_place(5)  # Turret Factory
         # Turret Research should still be 2 (not reset)
         assert self.state.can_build[4] == 2
+
+    def test_research_does_not_restart_after_completion(self):
+        # After research completes, further updates should not restart the timer
+        self.state.try_place(2)
+        self.state.update(settings.RESEARCH_TIMER + 0.1, _maxpop(2))
+        assert not self.state.is_researching(2)
+        self.state.update(1.0, _maxpop(2))
+        assert not self.state.is_researching(2)
 
 
 class TestBuildTree:

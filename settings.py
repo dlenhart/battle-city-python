@@ -189,6 +189,21 @@ BUILD_ICON_W         = 16
 BUILD_ICON_H         = 16
 BUILD_ICON_DEMOLISH  = 13  # frame index for the Demolish icon
 
+# ---------------------------------------------------------------------------
+# Population system — mirrors C++ CConstants.h / CBuilding.cpp
+# ---------------------------------------------------------------------------
+# Non-house buildings gain POP_INCREMENT every POP_TICK seconds while
+# attached to a House (max POPULATION_MAX_NON_HOUSE = 50).
+# A House stores the sum of both attached buildings (max 100).
+# Research requires pop == POP_MAX to start; aborts if pop drops.
+# imgPopulation.bmp display: client receives pop//8 (non-house) or pop//16 (house)
+# giving frame indices 0-6 across the 336-px-wide sheet (7 frames × 48 px).
+POP_TICK      = 0.25   # seconds between increments (250 ms, matches C++)
+POP_INCREMENT = 5      # population gained per tick
+POP_MAX       = 50     # POPULATION_MAX_NON_HOUSE (research/factory/hospital)
+POP_MAX_HOUSE = 100    # POPULATION_MAX_HOUSE (house shows sum of 2 attached)
+HOUSE_SLOTS   = 2      # max buildings attached to one house
+
 # Build button hit-area on imgInterface.bmp (relative to PANEL_X, PANEL_Y)
 BUILD_BTN_REL_X  = 126
 BUILD_BTN_REL_Y  = 396

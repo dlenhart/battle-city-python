@@ -98,7 +98,20 @@ class Building:
 
 
 class PlacedBuilding:
-    """A building placed by the player (factory, house, research, hospital)."""
+    """A building placed by the player (factory, house, research, hospital).
+
+    Population model (mirrors C++ CBuilding.cpp):
+      - Non-house buildings gain POP_INCREMENT every POP_TICK seconds,
+        BUT only while attached to a House (house_ref is not None).
+        Max pop = POP_MAX (50).
+      - A House's pop = sum of its attached buildings' pops (max POP_MAX_HOUSE = 100).
+        A house has up to HOUSE_SLOTS (2) attached building slots.
+      - Research requires pop == POP_MAX to start; timer freezes if pop drops.
+
+    imgPopulation.bmp display frame:
+      Non-house: min(pop // 8, 6)   (client receives pop/8 over network in C++)
+      House:     min(pop // 16, 6)  (client receives pop/16 over network in C++)
+    """
 
     def __init__(self, tile_x: int, tile_y: int, menu_index: int) -> None:
         # tile_x, tile_y = TOP-LEFT tile of the 3×3 footprint
@@ -110,6 +123,63 @@ class PlacedBuilding:
         self.sprite_row  = btype // 100
         self._anim_step  = random.randint(0, _NUM_ANIM_STEPS - 1)
         self._anim_timer = 0.0
+
+        # Population tracking
+        self.pop: int          = 0
+        self._pop_timer: float = settings.POP_TICK
+
+        # Attachment: non-house buildings attach to a House to gain population.
+        # House buildings track up to HOUSE_SLOTS attached buildings.
+        self.house_ref: "PlacedBuilding | None"              = None       # set by BuildingManager
+        self._attached: list["PlacedBuilding | None"]        = [None, None]  # house slots
+
+    # ------------------------------------------------------------------
+    # Building class helpers
+    # ------------------------------------------------------------------
+
+    @property
+    def bclass(self) -> int:
+        """Building class: 1=Factory 2=Hospital 3=House 4=Research."""
+        return settings.BUILDING_TYPES[self.menu_index] // 100
+
+    @property
+    def has_max_pop(self) -> bool:
+        """True when population is at its cap (triggers research start in C++)."""
+        if self.bclass == 3:
+            return self.pop >= settings.POP_MAX_HOUSE
+        return self.pop >= settings.POP_MAX
+
+    @property
+    def display_pop(self) -> int:
+        """Frame index (0-6) into imgPopulation.bmp for current population."""
+        if self.bclass == 3:   # House: pop/16
+            return min(self.pop // 16, 6)
+        return min(self.pop // 8, 6)   # other: pop/8
+
+    # ------------------------------------------------------------------
+    # Population update (called by BuildingManager.update)
+    # ------------------------------------------------------------------
+
+    def update_population(self, dt: float) -> None:
+        """Tick population growth.
+
+        Houses: derive pop from the sum of attached buildings.
+        Others: increment by POP_INCREMENT every POP_TICK seconds while
+                attached to a House and below POP_MAX.
+        """
+        if self.bclass == 3:   # House
+            self.pop = sum(b.pop for b in self._attached if b is not None)
+            return
+        if self.house_ref is None or self.pop >= settings.POP_MAX:
+            return
+        self._pop_timer -= dt
+        if self._pop_timer <= 0.0:
+            self._pop_timer += settings.POP_TICK
+            self.pop = min(self.pop + settings.POP_INCREMENT, settings.POP_MAX)
+
+    # ------------------------------------------------------------------
+    # Sprite / world position
+    # ------------------------------------------------------------------
 
     @property
     def world_x(self) -> int:
@@ -144,34 +214,110 @@ class BuildingManager:
     # Public interface
     # ------------------------------------------------------------------
 
+    @property
+    def placed_buildings(self) -> list[PlacedBuilding]:
+        return self._placed
+
     def update(self, dt: float) -> None:
         for b in self._buildings:
             b.update(dt)
         for p in self._placed:
             p.update(dt)
+            p.update_population(dt)
 
     def add_placed(self, tile_x: int, tile_y: int, menu_index: int) -> PlacedBuilding:
-        """Add a player-placed building and register its tiles as blocked."""
+        """Add a player-placed building, register blocked tiles, and attach to a house."""
         pb = PlacedBuilding(tile_x, tile_y, menu_index)
         self._placed.append(pb)
         for dx in range(3):
             for dy in range(3):
                 self._blocked.add((tile_x + dx, tile_y + dy))
+        self._try_attach(pb)
         return pb
+
+    def _try_attach(self, pb: PlacedBuilding) -> None:
+        """Link a newly-placed building into the House attachment system.
+
+        - New House   → adopt any unattached non-house buildings (up to HOUSE_SLOTS).
+        - New non-House → find any House that still has an open slot.
+        """
+        if pb.bclass == 3:   # new House: adopt unattached buildings
+            for other in self._placed:
+                if other is pb or other.bclass == 3 or other.house_ref is not None:
+                    continue
+                for i in range(settings.HOUSE_SLOTS):
+                    if pb._attached[i] is None:
+                        pb._attached[i] = other
+                        other.house_ref = pb
+                        break
+                if all(s is not None for s in pb._attached):
+                    break   # house is full
+        else:               # new non-house: find a house with an open slot
+            for house in self._placed:
+                if house.bclass != 3:
+                    continue
+                for i in range(settings.HOUSE_SLOTS):
+                    if house._attached[i] is None:
+                        house._attached[i] = pb
+                        pb.house_ref = house
+                        return
 
     def draw_sprites(
         self,
-        screen:     pygame.Surface,
-        cam_x:      float,
-        cam_y:      float,
-        field_rect: pygame.Rect,
-        sheet:      pygame.Surface,
+        screen:      pygame.Surface,
+        cam_x:       float,
+        cam_y:       float,
+        field_rect:  pygame.Rect,
+        sheet:       pygame.Surface,
+        items_sheet: pygame.Surface | None = None,
+        pop_sheet:   pygame.Surface | None = None,
     ) -> None:
-        """Draw building sprites (call inside screen clip rect)."""
+        """Draw building sprites + item/population overlays (call inside screen clip rect).
+
+        Overlay positions (relative to building top-left) mirror CDrawing.cpp DrawBuildings():
+          City Center  — pop at (+96, +49), row 1 of imgPopulation (popY=48)
+          Factory      — pop at (+96, +48), row 0; item icon at (+56, +52)
+          Hospital(2xx)— pop at (+96, +33), row 0
+          House   (3xx)— pop at (+92, +92), row 0
+          Research     — pop at (+96, +90), row 0; item icon at (+14, +98)
+        """
         for b, sx, sy in self._visible_buildings(cam_x, cam_y, field_rect):
             screen.blit(sheet, (sx, sy), b.sprite_src)
+            # City Center population dots (row 1 of imgPopulation, pop=0 column)
+            if pop_sheet:
+                screen.blit(pop_sheet, (sx + 96, sy + 49),
+                            pygame.Rect(0, 48, 48, 48))
+
         for pb, sx, sy in self._visible_placed(cam_x, cam_y, field_rect):
             screen.blit(sheet, (sx, sy), pb.sprite_src)
+            bclass = pb.bclass
+            bsub   = settings.BUILDING_TYPES[pb.menu_index] % 100
+
+            # Population / progress dots — popX driven by pb.display_pop (0-6)
+            if pop_sheet:
+                pop_x = pb.display_pop * 48
+                if bclass == 1:    # Factory
+                    screen.blit(pop_sheet, (sx + 96, sy + 48),
+                                pygame.Rect(pop_x, 0, 48, 48))
+                elif bclass == 2:  # Hospital (type 200)
+                    screen.blit(pop_sheet, (sx + 96, sy + 33),
+                                pygame.Rect(pop_x, 0, 48, 48))
+                elif bclass == 3:  # House (type 300)
+                    screen.blit(pop_sheet, (sx + 92, sy + 92),
+                                pygame.Rect(pop_x, 0, 48, 48))
+                elif bclass == 4:  # Research
+                    screen.blit(pop_sheet, (sx + 96, sy + 90),
+                                pygame.Rect(pop_x, 0, 48, 48))
+
+            # Item icon showing what the building produces / researches
+            if items_sheet and bclass in (1, 4):
+                img_x = bsub * 32
+                if bclass == 1:    # Factory  → icon at (+56, +52)
+                    screen.blit(items_sheet, (sx + 56, sy + 52),
+                                pygame.Rect(img_x, 0, 32, 32))
+                else:              # Research → icon at (+14, +98)
+                    screen.blit(items_sheet, (sx + 14, sy + 98),
+                                pygame.Rect(img_x, 0, 32, 32))
 
     def draw_labels(
         self,

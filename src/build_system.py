@@ -17,13 +17,23 @@ Build tree (settings.BUILD_TREE, 12 item slots k=0..11):
 
 Initial unlocks (from C++ CCity::resetToDefault):
   can_build[1] = 1  (House)
-  can_build[2] = 1  (Bazooka Research, slot k=0, BUILD_TREE[0]=-1)
-  can_build[4] = 1  (Turret Research,  slot k=1, BUILD_TREE[1]=-1)
+  can_build[2] = 1  (Bazooka/Laser Research, slot k=0, BUILD_TREE[0]=-1)
+  can_build[4] = 1  (Turret Research,        slot k=1, BUILD_TREE[1]=-1)
+
+Research population gating (mirrors C++ CBuilding.cpp):
+  Research timer only starts when the placed Research building has max population
+  (pop == POP_MAX = 50), which requires being attached to a House.
+  If population drops below max (e.g. House destroyed), the timer freezes.
+  _research_timer sentinel values:
+    0.0  = not yet started (building placed but awaiting max population)
+   >0.0  = in progress (seconds remaining)
+   -1.0  = completed (_RESEARCH_DONE)
 """
 
 import settings
 
-_N = settings.NUM_BUILD_TYPES   # 26
+_N            = settings.NUM_BUILD_TYPES   # 26
+_RESEARCH_DONE = -1.0                      # sentinel: research completed
 
 
 class CityBuildState:
@@ -36,21 +46,50 @@ class CityBuildState:
 
         # Initial unlocks — mirrors CCity::resetToDefault()
         self.can_build[1] = 1  # House (always available, multiple allowed)
-        self.can_build[2] = 1  # Bazooka Research
+        self.can_build[2] = 1  # Bazooka/Laser Research
         self.can_build[4] = 1  # Turret Research
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
 
-    def update(self, dt: float) -> None:
-        """Tick research timers; fire unlock callbacks on completion."""
+    def update(self, dt: float, placed_buildings: list) -> None:
+        """Tick research timers gated by building population.
+
+        A Research building's timer only runs while its placed building has
+        max population (pop == POP_MAX = 50), which requires a House attachment.
+        If pop drops the timer freezes; it resumes when pop is restored.
+        Mirrors CBuilding.cpp research timer block (lines 626-677).
+        """
+        # Build a quick lookup: menu_index → PlacedBuilding for research buildings
+        research_blds: dict[int, object] = {}
+        for pb in placed_buildings:
+            if settings.BUILDING_TYPES[pb.menu_index] // 100 == 4:
+                research_blds[pb.menu_index] = pb
+
         for i in range(_N):
-            if self._research_timer[i] > 0.0:
-                self._research_timer[i] -= dt
-                if self._research_timer[i] <= 0.0:
-                    self._research_timer[i] = 0.0
-                    self._on_research_complete(i)
+            t = self._research_timer[i]
+            if t == _RESEARCH_DONE:
+                continue   # already completed
+            if settings.BUILDING_TYPES[i] // 100 != 4:
+                continue   # only process research buildings
+            if self.can_build[i] != 2:
+                continue   # not yet placed
+
+            pb = research_blds.get(i)
+            if pb is None or not pb.has_max_pop:
+                # No placed building or population not full — freeze timer
+                continue
+
+            # Population is full: start (if not yet) then tick within the same frame.
+            if t == 0.0:
+                t = settings.RESEARCH_TIMER   # initialise countdown
+            t -= dt
+            if t <= 0.0:
+                self._research_timer[i] = _RESEARCH_DONE
+                self._on_research_complete(i)
+            else:
+                self._research_timer[i] = t
 
     def can_afford(self) -> bool:
         return self.cash >= settings.COST_BUILDING
@@ -70,27 +109,28 @@ class CityBuildState:
 
         self.cash -= settings.COST_BUILDING
 
-        btype = settings.BUILDING_TYPES[menu_index]
+        btype  = settings.BUILDING_TYPES[menu_index]
         bclass = btype // 100  # 1=Factory 2=Hospital 3=House 4=Research
 
         # Houses can be built multiple times; all other types are one-of-a-kind
         if bclass != 3:
             self.can_build[menu_index] = 2  # "already has"
 
-        # Research buildings start a completion timer
-        if bclass == 4:
-            self._research_timer[menu_index] = settings.RESEARCH_TIMER
+        # Research timer starts at 0 (frozen until building reaches max population)
+        # update() will start it when pop == POP_MAX
 
         return True
 
     def is_researching(self, menu_index: int) -> bool:
+        """True while research is actively running (timer > 0, not done)."""
         return self._research_timer[menu_index] > 0.0
 
     def research_progress(self, menu_index: int) -> float:
-        """Fraction of research remaining [0=done, 1=just started]."""
-        if self._research_timer[menu_index] <= 0.0:
+        """Fraction of research remaining [0=idle/done, 1=just started]."""
+        t = self._research_timer[menu_index]
+        if t <= 0.0:
             return 0.0
-        return self._research_timer[menu_index] / settings.RESEARCH_TIMER
+        return t / settings.RESEARCH_TIMER
 
     # ------------------------------------------------------------------
     # Private helpers
@@ -119,3 +159,6 @@ class CityBuildState:
         # MedKit Research (k=3) also unlocks Hospital
         if k == 3 and self.can_build[0] == 0:
             self.can_build[0] = 1
+
+        print(f"[BuildSystem] Research complete: menu_index={research_menu_index}, "
+              f"factory unlocked={factory_idx}")

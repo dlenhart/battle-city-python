@@ -115,6 +115,11 @@ class Game:
         self._build_icons = pygame.image.load(build_icons_path).convert()
         self._build_icons.set_colorkey((255, 0, 255))
 
+        self._items_sheet = _load_colorkeyed_sheet(require_asset("imgItems.bmp"))
+        print(f"[imgItems] {self._items_sheet.get_width()}x{self._items_sheet.get_height()}")
+        self._pop_sheet   = _load_colorkeyed_sheet(require_asset("imgPopulation.bmp"))
+        print(f"[imgPopulation] {self._pop_sheet.get_width()}x{self._pop_sheet.get_height()}")
+
     def _create_map(self) -> None:
         self._game_map  = GameMap(self._map_data, self._rock_sheet, self._lava_sheet)
         self._buildings = BuildingManager(self._map_data)
@@ -252,7 +257,7 @@ class Game:
         self._player.handle_input(keys)
         self._player.update(dt, get_tile=self._tile_check)
         self._buildings.update(dt)
-        self._build_state.update(dt)
+        self._build_state.update(dt, self._buildings.placed_buildings)
         self._update_engine_sound()
         self._update_bullets(dt)
 
@@ -313,7 +318,11 @@ class Game:
         self._screen.set_clip(field_rect)
         self._draw_ground(cam_x, cam_y)
         self._game_map.draw(self._screen, cam_x, cam_y, field_rect)
-        self._buildings.draw_sprites(self._screen, cam_x, cam_y, field_rect, self._building_sheet)
+        self._buildings.draw_sprites(
+            self._screen, cam_x, cam_y, field_rect, self._building_sheet,
+            items_sheet=self._items_sheet,
+            pop_sheet=self._pop_sheet,
+        )
         self._draw_player()
         self._draw_bullets()
         self._draw_explosions()
