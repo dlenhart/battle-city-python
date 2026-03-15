@@ -27,8 +27,10 @@ from src.bullet    import Bullet
 from src.explosion import Explosion
 from src.hud       import HUD
 from src.map       import GameMap
-from src.building  import BuildingManager
-from src.minimap   import Minimap
+from src.building     import BuildingManager
+from src.minimap      import Minimap
+from src.build_system import CityBuildState
+from src.build_menu   import BuildMenu
 
 
 def _arrow_frame(dif_x: float, dif_y: float) -> int:
@@ -109,6 +111,10 @@ class Game:
         self._arrows_red_sheet = _load_colorkeyed_sheet(require_asset("imgArrowsRed.bmp"))
         self._health_sheet     = _load_colorkeyed_sheet(require_asset("imgHealth.bmp"))
 
+        build_icons_path = require_asset("imgBuildIcons.bmp")
+        self._build_icons = pygame.image.load(build_icons_path).convert()
+        self._build_icons.set_colorkey((255, 0, 255))
+
     def _create_map(self) -> None:
         self._game_map  = GameMap(self._map_data, self._rock_sheet, self._lava_sheet)
         self._buildings = BuildingManager(self._map_data)
@@ -122,8 +128,10 @@ class Game:
         self._explosions: list[Explosion] = []
 
     def _create_hud(self) -> None:
-        self._font = pygame.font.SysFont("consolas", 14)
-        self._hud  = HUD(self._font)
+        self._font        = pygame.font.SysFont("consolas", 14)
+        self._hud         = HUD(self._font)
+        self._build_state = CityBuildState()
+        self._build_menu  = BuildMenu()
 
     # ------------------------------------------------------------------
     # Composite collision: terrain tiles + building blocked tiles
@@ -161,6 +169,81 @@ class Game:
                 return False
             if event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
+                    if self._build_menu.show_menu:
+                        self._build_menu.close()
+                    elif self._build_menu.is_placing != 0:
+                        self._build_menu.cancel_placement()
+                    else:
+                        return False
+            if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+                self._handle_mouse_click(event.pos)
+        return True
+
+    def _handle_mouse_click(self, pos: tuple[int, int]) -> None:
+        x, y = pos
+
+        # If the build menu popup is open, let it consume the click
+        if self._build_menu.show_menu:
+            self._build_menu.handle_click(pos, self._build_state.can_build)
+            return
+
+        # If in building-placement mode, try to place on the map
+        if self._build_menu.is_placing > 0:
+            self._try_place_building(pos)
+            return
+
+        # Check for click on the Build button on the control panel
+        build_btn = pygame.Rect(
+            settings.PANEL_X + settings.BUILD_BTN_REL_X,
+            settings.PANEL_Y + settings.BUILD_BTN_REL_Y,
+            settings.BUILD_BTN_W,
+            settings.BUILD_BTN_H,
+        )
+        if build_btn.collidepoint(x, y):
+            self._build_menu.open(
+                settings.BUILD_MENU_ANCHOR_X,
+                settings.BUILD_MENU_ANCHOR_Y,
+            )
+
+    def _try_place_building(self, pos: tuple[int, int]) -> None:
+        """Convert a screen click to a tile position and place the selected building."""
+        mx, my = pos
+        field_rect = pygame.Rect(
+            settings.FIELD_X, settings.FIELD_Y,
+            settings.FIELD_WIDTH, settings.FIELD_HEIGHT,
+        )
+        if not field_rect.collidepoint(mx, my):
+            return
+
+        cam_x, cam_y = self._camera.x, self._camera.y
+        world_x = mx - field_rect.x + int(cam_x)
+        world_y = my - field_rect.y + int(cam_y)
+        tile_x  = world_x // settings.TILE_SIZE
+        tile_y  = world_y // settings.TILE_SIZE
+
+        if not self._can_place_here(tile_x, tile_y):
+            return
+
+        menu_index = self._build_menu.is_placing - 1   # 1-indexed → 0-indexed
+        if not self._build_state.try_place(menu_index):
+            return
+
+        self._buildings.add_placed(tile_x, tile_y, menu_index)
+        self._build_menu.is_placing = 0
+
+    def _can_place_here(self, tile_x: int, tile_y: int) -> bool:
+        """Check that the 3×3 footprint is within bounds and free of obstacles."""
+        ts = settings.TILE_SIZE
+        if tile_x < 0 or tile_y < 0:
+            return False
+        if tile_x + 2 >= settings.MAP_SIZE or tile_y + 2 >= settings.MAP_SIZE:
+            return False
+        for dx in range(3):
+            for dy in range(3):
+                tx, ty = tile_x + dx, tile_y + dy
+                if self._game_map.get_tile(tx, ty) != settings.MAP_TILE_EMPTY:
+                    return False
+                if self._buildings.is_tile_blocked(tx, ty):
                     return False
         return True
 
@@ -169,6 +252,7 @@ class Game:
         self._player.handle_input(keys)
         self._player.update(dt, get_tile=self._tile_check)
         self._buildings.update(dt)
+        self._build_state.update(dt)
         self._update_engine_sound()
         self._update_bullets(dt)
 
@@ -242,6 +326,7 @@ class Game:
         self._minimap.draw(self._screen, self._player)
         self._draw_home_arrow()
         self._draw_health_bar()
+        self._draw_build_ui(cam_x, cam_y, field_rect)
         pygame.display.flip()
 
     def _build_ground_surf(self) -> pygame.Surface:
@@ -310,6 +395,24 @@ class Game:
             self._health_sheet,
             (settings.HEALTH_PANEL_X, dest_y),
             pygame.Rect(0, 0, settings.HEALTH_W, height_px),
+        )
+
+    def _draw_build_ui(
+        self,
+        cam_x:      float,
+        cam_y:      float,
+        field_rect: pygame.Rect,
+    ) -> None:
+        """Draw build menu popup and placement ghost (both unclipped)."""
+        self._build_menu.draw_placement_ghost(
+            self._screen, cam_x, cam_y, field_rect,
+            pygame.mouse.get_pos(), self._building_sheet,
+        )
+        self._build_menu.draw(
+            self._screen, self._font,
+            self._build_state.can_build,
+            self._build_icons,
+            self._build_state,
         )
 
     def _quit(self) -> None:

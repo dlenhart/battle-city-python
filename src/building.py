@@ -97,11 +97,46 @@ class Building:
             self._anim_step   = (self._anim_step + 1) % _NUM_ANIM_STEPS
 
 
+class PlacedBuilding:
+    """A building placed by the player (factory, house, research, hospital)."""
+
+    def __init__(self, tile_x: int, tile_y: int, menu_index: int) -> None:
+        # tile_x, tile_y = TOP-LEFT tile of the 3×3 footprint
+        self.tile_x      = tile_x
+        self.tile_y      = tile_y
+        self.menu_index  = menu_index
+        btype            = settings.BUILDING_TYPES[menu_index]
+        # sprite_row: 1=Factory 2=Hospital 3=House 4=Research (matches C++ type//100)
+        self.sprite_row  = btype // 100
+        self._anim_step  = random.randint(0, _NUM_ANIM_STEPS - 1)
+        self._anim_timer = 0.0
+
+    @property
+    def world_x(self) -> int:
+        return self.tile_x * settings.TILE_SIZE
+
+    @property
+    def world_y(self) -> int:
+        return self.tile_y * settings.TILE_SIZE
+
+    @property
+    def sprite_src(self) -> pygame.Rect:
+        src_x = (self._anim_step // 2) * _BSIZE
+        return pygame.Rect(src_x, self.sprite_row * _BSIZE, _BSIZE, _BSIZE)
+
+    def update(self, dt: float) -> None:
+        self._anim_timer += dt
+        if self._anim_timer >= _ANIM_INTERVAL:
+            self._anim_timer -= _ANIM_INTERVAL
+            self._anim_step  = (self._anim_step + 1) % _NUM_ANIM_STEPS
+
+
 class BuildingManager:
     """Loads, animates, draws, and provides collision for all city centers."""
 
     def __init__(self, map_data: list[list[int]]) -> None:
         self._buildings: list[Building]          = []
+        self._placed:    list[PlacedBuilding]    = []
         self._blocked:   set[tuple[int, int]]    = set()
         self._load(map_data)
 
@@ -112,6 +147,17 @@ class BuildingManager:
     def update(self, dt: float) -> None:
         for b in self._buildings:
             b.update(dt)
+        for p in self._placed:
+            p.update(dt)
+
+    def add_placed(self, tile_x: int, tile_y: int, menu_index: int) -> PlacedBuilding:
+        """Add a player-placed building and register its tiles as blocked."""
+        pb = PlacedBuilding(tile_x, tile_y, menu_index)
+        self._placed.append(pb)
+        for dx in range(3):
+            for dy in range(3):
+                self._blocked.add((tile_x + dx, tile_y + dy))
+        return pb
 
     def draw_sprites(
         self,
@@ -124,6 +170,8 @@ class BuildingManager:
         """Draw building sprites (call inside screen clip rect)."""
         for b, sx, sy in self._visible_buildings(cam_x, cam_y, field_rect):
             screen.blit(sheet, (sx, sy), b.sprite_src)
+        for pb, sx, sy in self._visible_placed(cam_x, cam_y, field_rect):
+            screen.blit(sheet, (sx, sy), pb.sprite_src)
 
     def draw_labels(
         self,
@@ -165,7 +213,7 @@ class BuildingManager:
         cam_y:      float,
         field_rect: pygame.Rect,
     ):
-        """Yield (building, screen_x, screen_y) for each building in the viewport."""
+        """Yield (building, screen_x, screen_y) for each city center in the viewport."""
         for b in self._buildings:
             sx = field_rect.x + b.world_x - int(cam_x)
             sy = field_rect.y + b.world_y - int(cam_y)
@@ -174,6 +222,22 @@ class BuildingManager:
             if sy + _BSIZE <= field_rect.y or sy >= field_rect.bottom:
                 continue
             yield b, sx, sy
+
+    def _visible_placed(
+        self,
+        cam_x:      float,
+        cam_y:      float,
+        field_rect: pygame.Rect,
+    ):
+        """Yield (placed_building, screen_x, screen_y) for each player-placed building."""
+        for pb in self._placed:
+            sx = field_rect.x + pb.world_x - int(cam_x)
+            sy = field_rect.y + pb.world_y - int(cam_y)
+            if sx + _BSIZE <= field_rect.x or sx >= field_rect.right:
+                continue
+            if sy + _BSIZE <= field_rect.y or sy >= field_rect.bottom:
+                continue
+            yield pb, sx, sy
 
     def _load(self, map_data: list[list[int]]) -> None:
         size      = settings.MAP_SIZE

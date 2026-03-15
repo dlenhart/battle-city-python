@@ -76,3 +76,125 @@ HEALTH_W         = 38                      # fixed pixel width
 DAMAGE_LASER     = 5
 DAMAGE_ROCKET    = 8
 DAMAGE_MINE      = 19
+
+# ---------------------------------------------------------------------------
+# Build system — mirrors client/CConstants.h + server/CCity.cpp resetToDefault
+# ---------------------------------------------------------------------------
+
+# 26 buildable types, each identified by a 3-digit code
+#   1xx = Factory  |  2xx = Hospital  |  3xx = House  |  4xx = Research
+BUILDING_TYPES: list[int] = [
+    200,  # 0  Hospital
+    300,  # 1  House
+    401,  # 2  Bazooka Research
+    101,  # 3  Bazooka Factory
+    409,  # 4  Turret Research
+    109,  # 5  Turret Factory
+    400,  # 6  Cloak Research
+    100,  # 7  Cloak Factory
+    402,  # 8  MedKit Research
+    102,  # 9  MedKit Factory
+    411,  # 10 Plasma Turret Research
+    111,  # 11 Plasma Turret Factory
+    404,  # 12 Mine Research
+    104,  # 13 Mine Factory
+    405,  # 14 Orb Research
+    105,  # 15 Orb Factory
+    403,  # 16 Time Bomb Research
+    103,  # 17 Time Bomb Factory
+    410,  # 18 Sleeper Research
+    110,  # 19 Sleeper Factory
+    408,  # 20 Wall Research
+    108,  # 21 Wall Factory
+    407,  # 22 DFG Research
+    107,  # 23 DFG Factory
+    406,  # 24 Flare Gun Research
+    106,  # 25 Flare Gun Factory
+]
+NUM_BUILD_TYPES  = 26  # len(BUILDING_TYPES)
+
+# Display names for each slot (matches C++ buildNames[])
+BUILD_NAMES: list[str] = [
+    "Hospital",
+    "House",
+    "Bazooka Research",
+    "Bazooka Factory",
+    "Turret Research",
+    "Turret Factory",
+    "Cloak Research",
+    "Cloak Factory",
+    "MedKit Research",
+    "MedKit Factory",
+    "Plasma Turret Research",
+    "Plasma Turret Factory",
+    "Mine Research",
+    "Mine Factory",
+    "Orb Research",
+    "Orb Factory",
+    "Time Bomb Research",
+    "Time Bomb Factory",
+    "Sleeper Research",
+    "Sleeper Factory",
+    "Wall Research",
+    "Wall Factory",
+    "DFG Research",
+    "DFG Factory",
+    "Flare Gun Research",
+    "Flare Gun Factory",
+]
+
+# Icon frame index into imgBuildIcons.bmp (14 frames × 16 px each = 224 px wide)
+BUILD_BUTTON: list[int] = [
+    12,  # Hospital
+    0,   # House
+    2,   # Bazooka Research
+    2,   # Bazooka Factory
+    9,   # Turret Research
+    9,   # Turret Factory
+    1,   # Cloak Research
+    1,   # Cloak Factory
+    3,   # MedKit Research
+    3,   # MedKit Factory
+    10,  # Plasma Turret Research
+    10,  # Plasma Turret Factory
+    5,   # Mine Research
+    5,   # Mine Factory
+    6,   # Orb Research
+    6,   # Orb Factory
+    4,   # Time Bomb Research
+    4,   # Time Bomb Factory
+    8,   # Sleeper Research
+    8,   # Sleeper Factory
+    11,  # Wall Research
+    11,  # Wall Factory
+    8,   # DFG Research
+    8,   # DFG Factory
+    7,   # Flare Gun Research
+    7,   # Flare Gun Factory
+]
+
+# Build prerequisite tree — 12 item slots (k=0..11) each paired with a Research+Factory.
+# BUILD_TREE[k] = prerequisite item slot index, or -1 (no prereq, available from start).
+# Slot ordering: rocket(0), turret(1), cloak(2), medkit(3), plasma(4), mine(5),
+#                orb(6), bomb(7), sleeper(8), wall(9), dfg(10), flare(11)
+BUILD_TREE: list[int] = [-1, -1, 0, 0, 1, 1, 2, 2, 4, 4, 5, 6]
+
+# Economy
+COST_BUILDING    = 500_000
+STARTING_CASH    = 95_000_000
+RESEARCH_TIMER   = 10.0        # seconds until research completes
+
+# Build-icon sheet (imgBuildIcons.bmp: 224×16 px, 14 icons of 16×16)
+BUILD_ICON_W         = 16
+BUILD_ICON_H         = 16
+BUILD_ICON_DEMOLISH  = 13  # frame index for the Demolish icon
+
+# Build button hit-area on imgInterface.bmp (relative to PANEL_X, PANEL_Y)
+BUILD_BTN_REL_X  = 126
+BUILD_BTN_REL_Y  = 396
+BUILD_BTN_W      = 64
+BUILD_BTN_H      = 22
+
+# Build-menu popup anchor (opened by Build button)
+BUILD_MENU_ANCHOR_X = FIELD_X + FIELD_WIDTH - 200   # left edge of popup
+BUILD_MENU_ANCHOR_Y = FIELD_Y + FIELD_HEIGHT - 16   # bottom anchor (menu grows up)
