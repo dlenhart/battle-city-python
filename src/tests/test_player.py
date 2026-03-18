@@ -356,3 +356,32 @@ class TestPlayerHealthAndCity:
         p = Player(0.0, 0.0, direction=0)
         p.hp = 20
         assert p.hp == 20
+
+
+# ------------------------------------------------------------------
+# Item state (cloak timer, bullet type)
+# ------------------------------------------------------------------
+
+class TestPlayerItemState:
+    def _make_player(self):
+        return Player(x=0.0, y=0.0)
+
+    def test_player_starts_uncloaked(self):
+        p = self._make_player()
+        assert p.is_cloaked is False
+        assert p._cloak_timer == 0.0
+        assert p.bullet_type == 0
+
+    def test_cloak_expires_after_timer(self):
+        p = self._make_player()
+        p.is_cloaked = True
+        p._cloak_timer = settings.TIMER_CLOAK
+        p.update(settings.TIMER_CLOAK + 0.1)
+        assert p.is_cloaked is False
+
+    def test_cloak_still_active_before_expiry(self):
+        p = self._make_player()
+        p.is_cloaked = True
+        p._cloak_timer = settings.TIMER_CLOAK
+        p.update(settings.TIMER_CLOAK - 0.1)
+        assert p.is_cloaked is True

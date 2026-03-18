@@ -49,6 +49,11 @@ class Player:
         self._fire_cooldown = 0.0   # seconds until next shot is allowed
         self._fire_requested = False
 
+        # Item state
+        self.is_cloaked:   bool  = False
+        self._cloak_timer: float = 0.0
+        self.bullet_type:  int   = 0    # 0=laser, 1=rocket
+
     # ------------------------------------------------------------------
     # Public interface
     # ------------------------------------------------------------------
@@ -74,6 +79,12 @@ class Player:
         self._update_turning(dt)
         self._update_movement(dt, get_tile)
         self._fire_cooldown = max(0.0, self._fire_cooldown - dt)
+
+        if self.is_cloaked:
+            self._cloak_timer -= dt
+            if self._cloak_timer <= 0.0:
+                self._cloak_timer = 0.0
+                self.is_cloaked   = False
 
     def try_fire(self) -> tuple[float, float, int] | None:
         """
