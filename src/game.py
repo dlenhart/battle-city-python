@@ -26,12 +26,13 @@ from src.collision    import CollisionMap
 from src.player       import Player
 from src.bullet       import Bullet
 from src.explosion    import Explosion
-from src.hud          import HUD, arrow_frame
+from src.hud          import HUD, arrow_frame, draw_inventory
 from src.map          import GameMap
 from src.building     import BuildingManager
 from src.minimap      import Minimap
 from src.build_system import CityBuildState
 from src.build_menu   import BuildMenu
+from src.inventory import Inventory, WorldItem, ItemEffects
 
 
 class Game:
@@ -114,6 +115,9 @@ class Game:
         print(f"[imgItems] {self._items_sheet.get_width()}x{self._items_sheet.get_height()}")
         self._pop_sheet   = _load_colorkeyed_sheet(require_asset("imgPopulation.bmp"))
         print(f"[imgPopulation] {self._pop_sheet.get_width()}x{self._pop_sheet.get_height()}")
+        self._inv_selection_sheet = _load_colorkeyed_sheet(
+            require_asset("imgInventorySelection.bmp")
+        )
 
     def _create_map(self) -> None:
         self._game_map      = GameMap(self._map_data, self._rock_sheet, self._lava_sheet)
@@ -127,6 +131,8 @@ class Game:
                                   city_x=start_x, city_y=start_y)
         self._bullets:    list[Bullet]    = []
         self._explosions: list[Explosion] = []
+        self._inventory:   Inventory        = Inventory()
+        self._world_items: list[WorldItem]  = []
 
     def _create_hud(self) -> None:
         self._font        = pygame.font.SysFont("consolas", 14)
@@ -176,6 +182,18 @@ class Game:
                         self._build_menu.cancel_placement()
                     else:
                         return False
+                elif event.key == pygame.K_u:
+                    self._try_pickup()
+                elif event.key == pygame.K_d:
+                    self._try_drop()
+                elif event.key == pygame.K_LEFTBRACKET:
+                    self._inventory.select_prev()
+                elif event.key == pygame.K_RIGHTBRACKET:
+                    self._inventory.select_next()
+                elif event.key == pygame.K_h:
+                    self._try_use_medkit()
+                elif event.key == pygame.K_c:
+                    self._try_use_cloak()
             if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
                 self._handle_mouse_click(event.pos)
         return True
@@ -248,7 +266,10 @@ class Game:
         keys = pygame.key.get_pressed()
         self._player.handle_input(keys)
         self._player.update(dt, get_tile=self._collision_map)
-        self._buildings.update(dt)
+        spawned = self._buildings.update(dt)
+        self._world_items.extend(spawned)
+        for wi in self._world_items:
+            wi.update(dt)
         self._build_state.update(dt, self._buildings.placed_buildings)
         self._update_engine_sound()
         self._update_bullets(dt)
@@ -311,6 +332,7 @@ class Game:
             items_sheet=self._items_sheet,
             pop_sheet=self._pop_sheet,
         )
+        self._draw_world_items(cam_x, cam_y)
         self._draw_player()
         self._draw_world_entity_list(self._bullets,    self._bullet_sheet)
         self._draw_world_entity_list(self._explosions, self._explosion_sheet)
@@ -323,6 +345,10 @@ class Game:
         self._minimap.draw(self._screen, self._player)
         self._draw_home_arrow()
         self._draw_health_bar()
+        draw_inventory(
+            self._screen, self._inventory,
+            self._items_sheet, self._inv_selection_sheet, self._font,
+        )
         self._draw_build_ui(cam_x, cam_y, self._field_rect)
         pygame.display.flip()
 
@@ -412,6 +438,70 @@ class Game:
             self._build_icons,
             self._build_state,
         )
+
+    def _draw_world_items(self, cam_x: float, cam_y: float) -> None:
+        """Draw all world items clipped to the field viewport."""
+        for wi in self._world_items:
+            cx, cy = wi.world_center
+            sx = self._field_rect.x + int(cx - cam_x) - settings.ITEM_WORLD_SIZE // 2
+            sy = self._field_rect.y + int(cy - cam_y) - settings.ITEM_WORLD_SIZE // 2
+
+            src_x = wi.item_type * settings.ITEM_WORLD_SIZE
+            src_y = settings.ITEM_WORLD_SRC_Y
+            if wi.item_type == settings.ITEM_TYPE_ORB:
+                src_y += wi.animation * settings.ITEM_WORLD_SIZE
+
+            self._screen.blit(
+                self._items_sheet,
+                (sx, sy),
+                pygame.Rect(src_x, src_y, settings.ITEM_WORLD_SIZE, settings.ITEM_WORLD_SIZE),
+            )
+
+    def _try_pickup(self) -> None:
+        """Pick up the nearest world item within ITEM_PICKUP_RANGE tiles."""
+        px = self._player.x + settings.TANK_FRAME_W / 2
+        py = self._player.y + settings.TANK_FRAME_H / 2
+        range_px = settings.ITEM_PICKUP_RANGE * settings.TILE_SIZE
+
+        best = None
+        best_dist = float("inf")
+        for wi in self._world_items:
+            cx, cy = wi.world_center
+            dist = ((px - cx) ** 2 + (py - cy) ** 2) ** 0.5
+            if dist < range_px and dist < best_dist:
+                best = wi
+                best_dist = dist
+
+        if best is None:
+            return
+        if self._inventory.pickup(best.item_type):
+            if best.factory_ref is not None:
+                best.factory_ref.world_item_count -= 1
+            self._world_items.remove(best)
+            if best.item_type == settings.ITEM_TYPE_ROCKET:
+                self._player.bullet_type = 1
+
+    def _try_drop(self) -> None:
+        """Drop the currently selected item at the player's tile."""
+        sel = self._inventory.selected_type
+        if sel == -1 or self._inventory.counts[sel] <= 0:
+            return
+        if self._inventory.drop(sel):
+            tx = int(self._player.x // settings.TILE_SIZE)
+            ty = int(self._player.y // settings.TILE_SIZE)
+            self._world_items.append(WorldItem(tile_x=tx, tile_y=ty, item_type=sel))
+            if sel == settings.ITEM_TYPE_ROCKET and self._inventory.counts[sel] == 0:
+                self._player.bullet_type = 0
+
+    def _try_use_medkit(self) -> None:
+        if self._inventory.counts[settings.ITEM_TYPE_MEDKIT] > 0:
+            ItemEffects.use_medkit(self._player)
+            self._inventory.drop(settings.ITEM_TYPE_MEDKIT)
+
+    def _try_use_cloak(self) -> None:
+        if self._inventory.counts[settings.ITEM_TYPE_CLOAK] > 0:
+            ItemEffects.use_cloak(self._player)
+            self._inventory.drop(settings.ITEM_TYPE_CLOAK)
 
     def _quit(self) -> None:
         pygame.quit()
