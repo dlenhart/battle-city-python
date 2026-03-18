@@ -213,3 +213,55 @@ BUILD_BTN_H      = 22
 # Build-menu popup anchor (opened by Build button)
 BUILD_MENU_ANCHOR_X = FIELD_X + FIELD_WIDTH - 200   # left edge of popup
 BUILD_MENU_ANCHOR_Y = FIELD_Y + FIELD_HEIGHT - 16   # bottom anchor (menu grows up)
+
+# ---------------------------------------------------------------------------
+# Item system — mirrors server/CConstants.h maxItems[] and itemTypes[]
+# ---------------------------------------------------------------------------
+
+# Item type IDs (matching C++ ITEM_TYPE_* constants)
+ITEM_TYPE_CLOAK   = 0
+ITEM_TYPE_ROCKET  = 1
+ITEM_TYPE_MEDKIT  = 2
+ITEM_TYPE_BOMB    = 3
+ITEM_TYPE_MINE    = 4
+ITEM_TYPE_ORB     = 5
+ITEM_TYPE_FLARE   = 6
+ITEM_TYPE_DFG     = 7
+ITEM_TYPE_WALL    = 8
+ITEM_TYPE_TURRET  = 9
+ITEM_TYPE_SLEEPER = 10
+ITEM_TYPE_PLASMA  = 11
+NUM_ITEM_TYPES    = 12
+
+# Human-readable names (index = item type)
+ITEM_NAMES: list[str] = [
+    "Cloak", "Rocket", "MedKit", "Bomb", "Mine", "Orb",
+    "Flare", "DFG", "Wall", "Turret", "Sleeper", "Plasma",
+]
+
+# World cap per item type — factory stops producing when this many exist on ground
+# Mirrors C++ server maxItems[] = {4,4,5,20,10,1,4,5,20,10,5,5}
+ITEM_MAX_COUNTS: list[int] = [4, 4, 5, 20, 10, 1, 4, 5, 20, 10, 5, 5]
+
+# Factory production interval in seconds (C++ ProduceTick + 7000 ms)
+FACTORY_PRODUCE_INTERVAL: float = 7.0
+
+# Pickup range in tiles (player must be within this distance of the item)
+ITEM_PICKUP_RANGE: float = 1.5
+
+# Cloak duration in seconds (C++ TIMER_CLOAK = 5000 ms)
+TIMER_CLOAK: float = 5.0
+
+# ---------------------------------------------------------------------------
+# Inventory panel grid — relative to PANEL_X, PANEL_Y
+# (mirrors C++ CDrawing::DrawInventory absolute positions minus MaxMapX=600)
+# ---------------------------------------------------------------------------
+INV_COL_OFFSETS: list[int] = [7, 42, 77]        # x offsets for cols 0–2
+INV_ROW_OFFSETS: list[int] = [267, 302, 337, 372]  # y offsets for rows 0–3
+INV_ICON_SIZE: int = 32                          # each slot icon is 32×32 px
+
+# World item sprite layout in imgItems.bmp
+# Small icons (used in inventory panel): src_y=0, src_x=type*32, size=32×32
+# Large icons (used in world): src_y=42, src_x=type*48, size=48×48
+ITEM_WORLD_SRC_Y: int = 42
+ITEM_WORLD_SIZE:  int = 48
