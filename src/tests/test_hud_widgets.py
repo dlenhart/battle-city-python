@@ -29,3 +29,36 @@ class TestHealthBarMath:
 
     def test_half_health(self):
         assert int(0.5 * settings.HEALTH_MAX_H) == settings.HEALTH_MAX_H // 2
+
+
+class TestDrawInventory:
+    """Smoke test — verifies draw_inventory runs without error."""
+
+    def test_draw_inventory_no_crash(self, pygame_surface):
+        """draw_inventory must not raise with an empty inventory."""
+        import pygame
+        import settings
+        from src.hud import draw_inventory
+        from src.inventory import Inventory
+
+        inv = Inventory()
+        font = pygame.font.SysFont("consolas", 14)
+        # Minimal 32x32 sheets
+        items_sheet = pygame.Surface((32 * 12, 96))
+        sel_sheet   = pygame.Surface((32, 32))
+        draw_inventory(pygame_surface, inv, items_sheet, sel_sheet, font)
+        # No assertion needed — just must not raise
+
+    def test_draw_inventory_with_items(self, pygame_surface):
+        import pygame
+        import settings
+        from src.hud import draw_inventory
+        from src.inventory import Inventory
+
+        inv = Inventory()
+        inv.pickup(settings.ITEM_TYPE_MEDKIT)
+        inv.pickup(settings.ITEM_TYPE_MEDKIT)
+        font = pygame.font.SysFont("consolas", 14)
+        items_sheet = pygame.Surface((32 * 12, 96))
+        sel_sheet   = pygame.Surface((32, 32))
+        draw_inventory(pygame_surface, inv, items_sheet, sel_sheet, font)

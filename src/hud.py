@@ -74,3 +74,49 @@ class HUD:
             settings.GRAY,
         )
         screen.blit(hint, (settings.FIELD_X, settings.FIELD_Y + settings.FIELD_HEIGHT + 10))
+
+
+def draw_inventory(
+    screen: pygame.Surface,
+    inventory,
+    items_sheet: pygame.Surface,
+    selection_sheet: pygame.Surface,
+    font: pygame.font.Font,
+) -> None:
+    """Draw the 3×4 inventory grid on the right panel.
+
+    Layout mirrors C++ CDrawing::DrawInventory():
+      - 12 item types in a 4-row × 3-col grid
+      - Each slot: 32×32 icon from imgItems.bmp at src_x=type*32, src_y=0
+      - Selected slot: imgInventorySelection.bmp drawn underneath icon
+      - Count > 1: yellow number at slot_x+22, slot_y+12
+
+    `inventory` is duck-typed — must expose .counts (list[int]) and
+    .selected_type (int).
+    """
+    yellow = (255, 215, 0)
+
+    for row, row_y in enumerate(settings.INV_ROW_OFFSETS):
+        for col, col_x in enumerate(settings.INV_COL_OFFSETS):
+            item_type = row * 3 + col
+            count = inventory.counts[item_type]
+            if count <= 0:
+                continue
+
+            slot_x = settings.PANEL_X + col_x
+            slot_y = settings.PANEL_Y + row_y
+
+            # Selection highlight drawn under icon
+            if item_type == inventory.selected_type:
+                screen.blit(selection_sheet, (slot_x, slot_y),
+                            pygame.Rect(0, 0, settings.INV_ICON_SIZE, settings.INV_ICON_SIZE))
+
+            # Item icon: small 32×32 row (src_y=0)
+            src_x = item_type * settings.INV_ICON_SIZE
+            screen.blit(items_sheet, (slot_x, slot_y),
+                        pygame.Rect(src_x, 0, settings.INV_ICON_SIZE, settings.INV_ICON_SIZE))
+
+            # Count label if more than one
+            if count > 1:
+                label = font.render(str(count), True, yellow)
+                screen.blit(label, (slot_x + 22, slot_y + 12))

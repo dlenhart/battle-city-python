@@ -23,3 +23,12 @@ def pygame_session():
     pygame.display.set_mode((800, 600))
     yield
     pygame.quit()
+
+
+import pygame
+
+
+@pytest.fixture
+def pygame_surface():
+    """Return a 800x600 pygame Surface for testing HUD drawing."""
+    return pygame.Surface((800, 600))
