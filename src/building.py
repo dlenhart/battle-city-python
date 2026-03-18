@@ -26,6 +26,7 @@ import random
 import pygame
 import settings
 from src.animation import AnimationTimer
+from src.inventory import WorldItem
 
 # ------------------------------------------------------------------
 # City names — verbatim from C++ Structs.cpp CityList[] (indices 0–63)
@@ -125,6 +126,13 @@ class PlacedBuilding:
         self.pop: int          = 0
         self._pop_timer: float = settings.POP_TICK
 
+        # Factory production
+        btype = settings.BUILDING_TYPES[menu_index]
+        bclass_local = btype // 100
+        self.item_type: int | None = (btype % 100) if bclass_local == 1 else None
+        self._produce_timer: float = 0.0
+        self.world_item_count: int = 0
+
         # Attachment: non-house buildings attach to a House to gain population.
         # House buildings track up to HOUSE_SLOTS attached buildings.
         self.house_ref: "PlacedBuilding | None"       = None        # set by BuildingManager
@@ -182,8 +190,33 @@ class PlacedBuilding:
         src_x = (self._anim.step // 2) * _BSIZE
         return pygame.Rect(src_x, self.bclass * _BSIZE, _BSIZE, _BSIZE)
 
-    def update(self, dt: float) -> None:
+    def update(self, dt: float) -> "WorldItem | None":
+        """Advance animation and factory production. Returns a new WorldItem or None."""
         self._anim.tick(dt)
+        return self._update_production(dt)
+
+    def _update_production(self, dt: float) -> "WorldItem | None":
+        """Tick factory timer; produce a WorldItem when ready."""
+        if self.item_type is None:
+            return None                       # not a factory
+        if not self.has_max_pop:
+            return None                       # needs full population
+        cap = settings.ITEM_MAX_COUNTS[self.item_type]
+        if self.world_item_count >= cap:
+            return None                       # world is full of this item type
+
+        self._produce_timer += dt
+        if self._produce_timer < settings.FACTORY_PRODUCE_INTERVAL:
+            return None
+
+        self._produce_timer -= settings.FACTORY_PRODUCE_INTERVAL
+        self.world_item_count += 1
+        return WorldItem(
+            tile_x=self.tile_x + 1,
+            tile_y=self.tile_y + 1,
+            item_type=self.item_type,
+            factory_ref=self,
+        )
 
 
 class BuildingManager:
@@ -203,12 +236,17 @@ class BuildingManager:
     def placed_buildings(self) -> list[PlacedBuilding]:
         return self._placed
 
-    def update(self, dt: float) -> None:
+    def update(self, dt: float) -> list:
+        """Tick all buildings. Returns list of newly spawned WorldItems."""
         for b in self._buildings:
             b.update(dt)
-        for p in self._placed:
-            p.update(dt)
-            p.update_population(dt)
+        spawned = []
+        for pb in self._placed:
+            item = pb.update(dt)
+            pb.update_population(dt)
+            if item is not None:
+                spawned.append(item)
+        return spawned
 
     def add_placed(self, tile_x: int, tile_y: int, menu_index: int) -> PlacedBuilding:
         """Add a player-placed building, register blocked tiles, and attach to a house."""

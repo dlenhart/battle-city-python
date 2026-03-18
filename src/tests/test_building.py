@@ -210,3 +210,72 @@ class TestCityNames:
 
     def test_no_empty_names(self):
         assert all(name for name in CITY_NAMES)
+
+
+# ---------------------------------------------------------------------------
+# Factory production tests
+# ---------------------------------------------------------------------------
+import settings
+from src.inventory import WorldItem
+
+
+class TestFactoryProduction:
+    """PlacedBuilding produces WorldItems when at full pop after 7s."""
+
+    def _make_factory(self, menu_index: int = 3) -> "PlacedBuilding":
+        """menu_index=3 → Bazooka Factory (type 101, item_type=1=Rocket)."""
+        from src.building import PlacedBuilding
+        pb = PlacedBuilding(tile_x=10, tile_y=10, menu_index=menu_index)
+        pb.pop = settings.POP_MAX   # force full population
+        return pb
+
+    def test_factory_has_item_type(self):
+        pb = self._make_factory(menu_index=3)   # type 101 → item 1
+        assert pb.item_type == 1
+
+    def test_non_factory_has_no_item_type(self):
+        from src.building import PlacedBuilding
+        pb = PlacedBuilding(tile_x=0, tile_y=0, menu_index=0)   # Hospital
+        assert pb.item_type is None
+
+    def test_factory_produces_item_after_interval(self):
+        pb = self._make_factory()
+        result = pb.update(settings.FACTORY_PRODUCE_INTERVAL + 0.1)
+        assert isinstance(result, WorldItem)
+        assert result.item_type == pb.item_type
+
+    def test_factory_sets_spawn_position(self):
+        pb = self._make_factory()
+        item = pb.update(settings.FACTORY_PRODUCE_INTERVAL + 0.1)
+        assert item.tile_x == pb.tile_x + 1
+        assert item.tile_y == pb.tile_y + 1
+
+    def test_factory_respects_world_cap(self):
+        pb = self._make_factory()
+        cap = settings.ITEM_MAX_COUNTS[pb.item_type]
+        pb.world_item_count = cap   # already at cap
+        result = pb.update(settings.FACTORY_PRODUCE_INTERVAL + 0.1)
+        assert result is None
+
+    def test_factory_increments_world_item_count(self):
+        pb = self._make_factory()
+        pb.update(settings.FACTORY_PRODUCE_INTERVAL + 0.1)
+        assert pb.world_item_count == 1
+
+    def test_factory_no_produce_before_interval(self):
+        pb = self._make_factory()
+        result = pb.update(settings.FACTORY_PRODUCE_INTERVAL - 0.1)
+        assert result is None
+
+    def test_non_factory_update_returns_none(self):
+        from src.building import PlacedBuilding
+        pb = PlacedBuilding(tile_x=0, tile_y=0, menu_index=0)   # Hospital
+        pb.pop = settings.POP_MAX
+        result = pb.update(100.0)
+        assert result is None
+
+    def test_factory_no_produce_without_full_pop(self):
+        pb = self._make_factory()
+        pb.pop = settings.POP_MAX - 1   # not full
+        result = pb.update(settings.FACTORY_PRODUCE_INTERVAL + 0.1)
+        assert result is None
