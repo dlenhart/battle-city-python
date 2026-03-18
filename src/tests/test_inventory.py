@@ -128,7 +128,7 @@ class TestItemEffects:
         player = _FakePlayer()
         ItemEffects.use_cloak(player)
         assert player.is_cloaked is True
-        assert player.is_cloaked == True
+        assert player._cloak_timer == settings.TIMER_CLOAK
 
     def test_rocket_sets_bullet_type(self):
         player = _FakePlayer()
