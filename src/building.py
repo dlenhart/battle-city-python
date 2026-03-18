@@ -127,9 +127,9 @@ class PlacedBuilding:
         self._pop_timer: float = settings.POP_TICK
 
         # Factory production
-        btype = settings.BUILDING_TYPES[menu_index]
-        bclass_local = btype // 100
-        self.item_type: int | None = (btype % 100) if bclass_local == 1 else None
+        self.item_type: int | None = (
+            (settings.BUILDING_TYPES[menu_index] % 100) if self.bclass == 1 else None
+        )
         self._produce_timer: float = 0.0
         self.world_item_count: int = 0
 
@@ -205,11 +205,14 @@ class PlacedBuilding:
         if self.world_item_count >= cap:
             return None                       # world is full of this item type
 
-        self._produce_timer += dt
+        # Cap accumulation to one interval to prevent multi-produce on large dt
+        self._produce_timer = min(
+            self._produce_timer + dt, settings.FACTORY_PRODUCE_INTERVAL
+        )
         if self._produce_timer < settings.FACTORY_PRODUCE_INTERVAL:
             return None
 
-        self._produce_timer -= settings.FACTORY_PRODUCE_INTERVAL
+        self._produce_timer = 0.0
         self.world_item_count += 1
         return WorldItem(
             tile_x=self.tile_x + 1,
@@ -236,7 +239,7 @@ class BuildingManager:
     def placed_buildings(self) -> list[PlacedBuilding]:
         return self._placed
 
-    def update(self, dt: float) -> list:
+    def update(self, dt: float) -> "list[WorldItem]":
         """Tick all buildings. Returns list of newly spawned WorldItems."""
         for b in self._buildings:
             b.update(dt)
